@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Typed Python functions whose body is a language model call, on lmcc and lm15"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-# lmcc and lm15 are not on PyPI yet: ./dev-venv installs lmcc editable from
-# ../lmcc/python and lm15 at the commit lmcc pins.
+# lmcc is not on PyPI yet: ./dev-venv installs lmcc editable from
+# ../lmcc/python and lm15 at the release lmcc pins.
 dependencies = []
 
 [tool.setuptools]
