@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# The project venv: lmfn (editable), lmcc (editable, from ../lmcc) and lm15
+# at the commit lmcc pins, plus pytest.
+set -euo pipefail
+cd "$(dirname "$0")"
+LMCC=../lmcc/python
+LM15_PIN=$(grep -o '"lm15 @ [^"]*"' $LMCC/pyproject.toml | tr -d '"')
+[ -x .venv/bin/python ] || uv venv -q .venv --python 3.12
+uv pip install -q --python .venv/bin/python -e . -e "$LMCC" "$LM15_PIN" pytest
+.venv/bin/python -c 'import lmfn, lmcc, lm15; print("lmfn", lmfn.__version__, "| lmcc", lmcc.__version__, "| lm15", lm15.__version__)'

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Offline tests (a fake router; no network, no keys). Live: tests/live.py.
+set -euo pipefail
+cd "$(dirname "$0")"
+[ -x .venv/bin/python ] || ./dev-venv
+.venv/bin/python -m pytest -q tests
