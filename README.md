@@ -228,7 +228,25 @@ s.result                               # the same CallResult, after the loop
 
 Not built yet: streaming a tool loop, and async (`acall`).
 
-## 12. Turns connect to the next layer
+## 12. Sessions
+
+```python
+chat = lmfn.Session(rag, forget=["context"], window=20)
+chat("Who founded the bakery?", context=docs_1)
+chat("And in what year?", context=docs_2)   # docs_1 is not sent again
+chat.undo(); chat.fork(); chat.save("s.json"); lmfn.Session.load("s.json", rag)
+chat.score(metric); chat.examples(min_score=0.5)   # training data
+```
+
+A session is a list of lmcc turns and a function. `forget` leaves inputs
+out of *past* turns (the current call still gets them; the record keeps
+them). **The cost of forgetting, seen live:** a fact that was only in a
+forgotten document is gone unless the model's answer repeated it. On
+2026-09-23, gpt-4.1-mini answered "Marie Tremblay founded the bakery"
+without the year, so on the next turn it guessed a wrong year; Claude
+had written the year in its answer and kept it (`tests/live_session.py`).
+
+## 13. Turns connect to the next layer
 
 ```python
 first = assistant.call("My name is Ana.")
