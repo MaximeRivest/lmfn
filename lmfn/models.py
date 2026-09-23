@@ -31,6 +31,9 @@ def capabilities(provider: str, model: str) -> dict:
         # `stop` (lm15 refuses it loudly; found live 2026-09-23)
         caps["stop_sequences"] = provider != "openai"
         caps["native_reasoning"] = model.startswith(_REASONING_PREFIXES.get(provider, ()))
+        # Anthropic continues a trailing assistant message (not with extended
+        # thinking, which lmfn requests only through native_reasoning)
+        caps["assistant_prefill"] = provider == "anthropic" and not caps["native_reasoning"]
     else:
         # OpenAI-compatible hosts (OpenRouter, Groq, DeepSeek, ...) vary by
         # model: text tool calls and tags work everywhere.
