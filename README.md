@@ -1,12 +1,17 @@
 # lmfn
 
-**Status (2026-09-23): built.** Every example below runs, except where a
-section says otherwise. Offline tests: `./check` (a scripted router).
-Live: `tests/live.py` passed on gpt-4.1-mini, claude-haiku-4-5,
-gemini-2.5-flash and qwen-2.5-72b (OpenRouter), covering one call, a
-dataclass, reasoning, the tool loop, a continued conversation and
-streaming. Setup: `./dev-venv` (lmcc editable from `../lmcc`, lm15 at
-lmcc's pinned commit).
+```bash
+pip install lmfn                 # functions and sessions
+pip install "lmfn[verifiers]"    # + the verifiers harness, for RL and distillation
+```
+
+**Status: alpha.** Every example below runs, except where a section says
+otherwise. Offline tests: `./check`. Live: `tests/live.py` passed on
+gpt-4.1-mini, claude-haiku-4-5, gemini-2.5-flash and qwen-2.5-72b. Training:
+`docs/rl-walkthrough.md` (a runnable walkthrough) and the examples
+`examples/alphabet_sort_lmfn` (multi-turn RL) and `examples/banking77_lmfn`
+(distilling a thinking teacher into a small model). Development setup:
+`./dev-venv` (lmcc editable from `../lmcc`).
 
 **The function is the prompt; calling it calls the model.** lmfn is the
 thin layer that funnydspy, functai and elemai each prototyped: a typed
@@ -246,7 +251,25 @@ forgotten document is gone unless the model's answer repeated it. On
 without the year, so on the next turn it guessed a wrong year; Claude
 had written the year in its answer and kept it (`tests/live_session.py`).
 
-## 13. Turns connect to the next layer
+## 13. Training: the verifiers harness
+
+`pip install "lmfn[verifiers]"` adds the harness `lmfn-verifiers`: any
+`@lmfn.ai` function runs as a verifiers agent, with any lmcc adapter, and
+verifiers records the traces trainers use (prime-rl RL, SFT distillation).
+
+```bash
+vf-eval alphabet-sort-lmfn \
+    --env.agent.harness.id lmfn-verifiers \
+    --env.agent.harness.program alphabet_sort_lmfn.program:sort_names \
+    --env.agent.harness.adapter original
+```
+
+Past replies are replayed verbatim, so a multi-turn episode stays one
+training sample; `lmfn_verifiers.AnswerOnlyTask` drops a teacher's
+reasoning before the trace is recorded, so a small student learns the
+answer only. See `docs/rl-walkthrough.md`.
+
+## 14. Turns connect to the next layer
 
 ```python
 first = assistant.call("My name is Ana.")

@@ -7,14 +7,25 @@ name = "lmfn"
 version = "0.1.0"
 description = "Typed Python functions whose body is a language model call, on lmcc and lm15"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-# lmcc is not on PyPI yet: ./dev-venv installs lmcc editable from
-# ../lmcc/python and lm15 at the release lmcc pins.
-dependencies = []
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Maxime Rivest" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+]
+dependencies = ["lmcc>=0.8.2,<0.9", "lm15>=1.0.0rc1"]
 
 [project.optional-dependencies]
-# the verifiers harness (`lmfn_verifiers`, harness id `lmfn-verifiers`)
-verifiers = ["verifiers"]
+# the verifiers harness (`lmfn_verifiers`, harness id `lmfn-verifiers`); the
+# harness uses the v1 API, present since verifiers 0.3.1
+verifiers = ["verifiers>=0.3.1"]
+
+[project.urls]
+Homepage = "https://github.com/MaximeRivest/lmfn"
+Source = "https://github.com/MaximeRivest/lmfn"
 
 [tool.setuptools]
 packages = ["lmfn", "lmfn_verifiers"]

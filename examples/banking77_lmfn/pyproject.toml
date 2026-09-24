@@ -3,7 +3,7 @@ name = "banking77-lmfn"
 version = "0.1.0"
 description = "Distill a thinking teacher into a small classifier: banking77 as one lmfn function"
 requires-python = ">=3.11"
-dependencies = ["verifiers", "datasets", "lmfn"]
+dependencies = ["verifiers>=0.3.1", "datasets", "lmfn[verifiers]>=0.1.0"]
 
 [build-system]
 requires = ["hatchling"]

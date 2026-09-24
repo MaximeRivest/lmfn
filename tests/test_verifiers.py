@@ -23,6 +23,19 @@ from alphabet_sort_lmfn.program import ADAPTERS, Entry, sort_names  # noqa: E402
 HERE = Path(__file__).parent
 
 
+def _v1_cli() -> bool:
+    """vf-eval with the v1 flags (verifiers 0.3.2 dev); 0.3.1 ships the older CLI."""
+    exe = Path(sys.executable).parent / "vf-eval"
+    try:
+        out = subprocess.run([str(exe), "--help"], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "--env.agent" in out.stdout + out.stderr or "harness" in out.stdout
+
+
+needs_v1_cli = pytest.mark.skipif(not _v1_cli(), reason="needs the verifiers v1 vf-eval CLI")
+
+
 def config(**kw):
     return lv.LmfnHarnessConfig(id="lmfn-verifiers", program="alphabet_sort_lmfn.program:sort_names", **kw)
 
@@ -94,6 +107,7 @@ def fake_model():
     proc.terminate()
 
 
+@needs_v1_cli
 @pytest.mark.parametrize("adapter", ["original", "tags", "json"])
 def test_vf_eval_rollouts_are_one_training_path_each(fake_model, adapter, tmp_path):
     from verifiers.v1.trace import Trace
@@ -120,6 +134,7 @@ def test_vf_eval_rollouts_are_one_training_path_each(fake_model, adapter, tmp_pa
         assert abs(t["rewards"]["alphabet_sort"]["score"] - expected) < 1e-9
 
 
+@needs_v1_cli
 @pytest.mark.parametrize("mode", ["drop", "keep"])
 def test_a_thinking_teachers_reasoning_is_dropped_before_the_trace(fake_model, mode, tmp_path):
     pytest.importorskip("banking77_lmfn")

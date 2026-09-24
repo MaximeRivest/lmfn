@@ -3,7 +3,7 @@ name = "alphabet-sort-lmfn"
 version = "0.1.0"
 description = "verifiers' alphabet-sort as one lmfn function with several lmcc adapters"
 requires-python = ">=3.11"
-dependencies = ["verifiers", "datasets", "lmfn"]
+dependencies = ["verifiers>=0.3.1", "datasets", "lmfn[verifiers]>=0.1.0"]
 
 [build-system]
 requires = ["hatchling"]
