@@ -48,7 +48,8 @@ from lmfn.core import Function
 INFO_KEY = "lmfn"
 ENVELOPE = "lmfn_inputs"
 
-__all__ = ["LmfnHarness", "LmfnHarnessConfig", "turns", "user_turn"]
+__all__ = ["AnswerOnlyTask", "AnswerOnlyTaskConfig", "RowTaskData", "LmfnHarness", "LmfnHarnessConfig",
+           "OneTurnEnv", "strip_reasoning", "turns", "user_turn"]
 
 
 # ------------------------------------------------------------------ config
@@ -66,6 +67,8 @@ class LmfnHarnessConfig(HarnessConfig):
     verifiers is usually an OpenAI-compatible server lmfn cannot identify, so
     this is declared, never guessed. Text tool calls unless
     ``native_function_calling`` is declared."""
+    read_timeout: float = 600.0
+    """Seconds to wait for the model's reply; thinking teachers are slow."""
     on_unreadable: Literal["record", "raise"] = "record"
     """``record``: an unreadable reply becomes a turn with no values and the
     exchange goes on; ``raise``: the rollout errors."""
@@ -84,8 +87,10 @@ class EndpointRouter:
     """The lm15 router face over verifiers' interception endpoint
     (OpenAI Chat Completions at ``endpoint``, bearer ``secret``)."""
 
-    def __init__(self, endpoint: str, secret: str):
-        self.lm = lm15.OpenAIChatLM(api_key=secret, base_url=endpoint)
+    def __init__(self, endpoint: str, secret: str, read_timeout: float = 600.0):
+        from lm15.transports._sync import StdlibTransport
+        self.lm = lm15.OpenAIChatLM(api_key=secret, base_url=endpoint,
+                                    transport=StdlibTransport(read_timeout=read_timeout))
 
     def resolve(self, model: str) -> _Resolution:
         return _Resolution("verifiers", model)
@@ -198,7 +203,7 @@ class LmfnSession(HarnessSession):
         fn = load_program(config)
         fn.on_unreadable = config.on_unreadable
         fn.retries = 0
-        self.fn = fn.using(model=ctx.model, router=EndpointRouter(endpoint, secret),
+        self.fn = fn.using(model=ctx.model, router=EndpointRouter(endpoint, secret, config.read_timeout),
                            capabilities=dict(config.capabilities), **sampling)
         self.session = lmfn.Session(self.fn)
 
@@ -265,3 +270,75 @@ def turns(trace: Trace, fn: Function | None = None) -> list[dict]:
             t["outputs"] = {k: lmcc_turn.lift(by_name[k].annotation, v) if k in by_name else v
                             for k, v in t["outputs"].items()}
     return recorded
+
+
+# ------------------------------------------------------------------ distillation
+#
+# In SFT distillation the teacher writes the rollouts and the student is
+# trained on every token of them (prime-rl `loss = "sft"`). The student's
+# renderer writes a reply's `reasoning_content` into the training sample as a
+# <think> block, so a thinking teacher would teach the student to think. A
+# task that drops the reasoning at the response boundary (before the trace
+# records it) keeps the teacher's thinking — it still reasons, and still pays
+# for it — out of what the student learns: the answer only.
+
+
+import re as _re
+import verifiers.v1 as vf
+
+_THINK = _re.compile(r"^\s*<think>.*?</think>\s*", _re.DOTALL)
+
+
+def strip_reasoning(response: "vf.Response") -> "vf.Response | None":
+    """The response without its reasoning (the field, the opaque signed state,
+    and a leading inline <think> block); None when there was none."""
+    message = response.message
+    content = message.content
+    inline = isinstance(content, str) and _THINK.match(content) is not None
+    if not message.reasoning_content and not message.provider_state and not inline:
+        return None
+    update = {"reasoning_content": None, "provider_state": None}
+    if inline:
+        update["content"] = _THINK.sub("", content, count=1)
+    return response.model_copy(update={"message": message.model_copy(update=update)})
+
+
+class AnswerOnlyTaskConfig(vf.TaskConfig):
+    teacher_reasoning: Literal["drop", "keep"] = "drop"
+    """``drop``: the recorded reply is the answer only (distilling a thinking
+    teacher into a model that answers directly). ``keep``: record it all."""
+
+
+ConfigT = typing.TypeVar("ConfigT", bound=AnswerOnlyTaskConfig)
+
+
+class RowTaskData(vf.TaskData):
+    info: dict
+    """``inputs`` (the function's inputs for this row) and any row data the
+    reward needs (a label, a reference answer)."""
+
+
+class AnswerOnlyTask(vf.Task[RowTaskData, vf.State, ConfigT]):
+    """A task base for distillation: drops the model's reasoning before the
+    trace records the reply (``teacher_reasoning = "drop"``, the default)."""
+
+    @vf.intercept
+    def drop_teacher_reasoning(self, response: vf.Response) -> vf.Response | None:
+        if self.config.teacher_reasoning != "drop":
+            return None
+        return strip_reasoning(response)
+
+    @vf.metric
+    async def readable(self, trace: vf.Trace) -> float:
+        """Share of turns whose reply lmcc could read."""
+        recorded = turns(trace)
+        return sum("refusal" not in t for t in recorded) / len(recorded) if recorded else 0.0
+
+
+class OneTurnEnv(vf.SingleAgentEnv):
+    """The scripted user for a row-per-task taskset: sends the task's
+    ``info["inputs"]`` as one turn."""
+
+    async def run(self, task, agents):
+        async with agents.agent.interaction(task) as interaction:
+            await interaction.turn(user_turn(**task.data.info["inputs"]))

@@ -69,6 +69,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        system = next((_text(m) for m in req["messages"] if m["role"] == "system"), "")
+        if "Intent:" in system:              # banking77: a thinking teacher
+            self._send({"id": "c1", "object": "chat.completion", "created": 0, "model": req.get("model", "fake"),
+                        "choices": [{"index": 0, "finish_reason": "stop", "message": {
+                            "role": "assistant", "content": "Intent: card_arrival",
+                            "reasoning_content": "TEACHER THINKING: they wait for a card."}}],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
+            return
         text = answer(req["messages"])
         self._send({"id": "c1", "object": "chat.completion", "created": 0, "model": req.get("model", "fake"),
                     "choices": [{"index": 0, "finish_reason": "stop",

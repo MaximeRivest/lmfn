@@ -118,3 +118,32 @@ def test_vf_eval_rollouts_are_one_training_path_each(fake_model, adapter, tmp_pa
         turns = t["info"]["lmfn"]["turns"]
         expected = sum("refusal" not in x for x in turns) / row["task"]["data"]["info"]["num_turns"]
         assert abs(t["rewards"]["alphabet_sort"]["score"] - expected) < 1e-9
+
+
+@pytest.mark.parametrize("mode", ["drop", "keep"])
+def test_a_thinking_teachers_reasoning_is_dropped_before_the_trace(fake_model, mode, tmp_path):
+    pytest.importorskip("banking77_lmfn")
+    from verifiers.v1.trace import Trace
+    vf_eval = Path(sys.executable).parent / "vf-eval"
+    run = subprocess.run(
+        [str(vf_eval), "banking77-lmfn", "--env.agent.harness.id", "lmfn-verifiers",
+         "--env.agent.harness.program", "banking77_lmfn.program:classify",
+         "--env.agent.harness.adapter", "compact", "--env.taskset.task.teacher-reasoning", mode,
+         "--model", "fake", "--client.base-url", fake_model, "--client.api-key-var", "FAKE_KEY",
+         "--num-tasks", "3", "--no-push", "--no-rich", "--output-dir", str(tmp_path)],
+        env={**os.environ, "FAKE_KEY": "x"}, capture_output=True, text=True, timeout=300)
+    assert run.returncode == 0, run.stderr[-2000:]
+    for line in next(tmp_path.rglob("traces.jsonl")).read_text().splitlines():
+        t = json.loads(line)["traces"][0]
+        reply = [m for m in Trace.model_validate(t).branches[0].messages if m.role == "assistant"][0]
+        assert reply.content == "Intent: card_arrival"
+        assert (reply.reasoning_content is None) == (mode == "drop")
+
+
+def test_strip_reasoning_removes_an_inline_think_block():
+    from verifiers.v1.types import AssistantMessage, Response
+    def response(content):
+        return Response(id="r", created=0, model="m", finish_reason="stop",
+                        message=AssistantMessage(content=content))
+    assert lv.strip_reasoning(response("<think>hm</think>\nIntent: x")).message.content == "Intent: x"
+    assert lv.strip_reasoning(response("Intent: x")) is None

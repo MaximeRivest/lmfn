@@ -1,0 +1,33 @@
+# Hosted SFT distillation: DeepSeek V4.1 Flash (thinks) -> Qwen3.5-0.8B (answers).
+#
+#   prime train configs/distill-banking77.toml
+#
+# The teacher answers each banking77 row through the lmfn harness; the task
+# drops its reasoning before the trace is recorded, so the student is trained
+# on "Intent: <label>" only, in the compact adapter's layout.
+#
+# NOT RUNNABLE YET: the taskset must be pushed to the Environments Hub
+# (`prime env push -p examples/banking77_lmfn -v PRIVATE`), and its
+# dependencies installable there: lmfn (unpublished) and lmcc >= 0.8.2
+# (on the verifiers-harness branch, unreleased). Replace OWNER below.
+
+model = "Qwen/Qwen3.5-0.8B"
+loss = "sft"
+max_steps = 50
+batch_size = 64
+rollouts_per_example = 1          # one teacher answer per row
+
+[teacher]
+model = "deepseek/deepseek-v4.1-flash"
+
+[teacher.sampling]
+max_tokens = 4000
+reasoning_effort = "low"
+
+[sampling]
+max_tokens = 32                   # the student answers in one short line
+enable_thinking = false           # matches the empty <think></think> it is trained on
+
+[[env]]
+taskset = { id = "OWNER/banking77-lmfn", split = "train" }
+harness = { id = "lmfn-verifiers", program = "banking77_lmfn.program:classify", adapter = "compact" }
