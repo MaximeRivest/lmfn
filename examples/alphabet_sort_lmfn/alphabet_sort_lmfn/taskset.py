@@ -6,6 +6,11 @@ function's inputs, not a prompt: the scripted user sends them with
 `user_turn`, the adapter chosen on the harness writes the prompt, and the
 reward scores the values the adapter read back.
 
+Live, gpt-4.1-mini, 30 episodes (2026-09-23): the original environment 0.944;
+this port with the `original` adapter 0.973 (38/39 turns sorted right, 37/39
+marks right, every rollout one training path); `json` 0.275 and `tags` 0.216,
+which sort well but mark new names badly: the adapters differ, the task does not.
+
     vf-eval alphabet-sort-lmfn \
         --env.agent.harness.id lmfn-verifiers \
         --env.agent.harness.program alphabet_sort_lmfn.program:sort_names \
@@ -148,7 +153,8 @@ class AlphabetSortTaskset(vf.Taskset[AlphabetSortTask, AlphabetSortConfig]):
                 yield AlphabetSortTask(
                     AlphabetSortTaskData(
                         idx=idx, prompt=None,
-                        info={"turn_inputs": [{"names": n, "by": by} for n in shown_names],
+                        info={"turn_inputs": [{"names": n, "by": by, "first_turn": k == 0}
+                                              for k, n in enumerate(shown_names)],
                               "ground_truths": truths, "num_turns": len(turns_)},
                     ),
                     c.task,

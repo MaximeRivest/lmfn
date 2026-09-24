@@ -30,8 +30,9 @@ def answer(messages):
     system = next((_text(m) for m in messages if m["role"] == "system"), "")
     style, by, seen = None, "LAST", []
     for u in users:
-        for pattern, s in ((r"by (\w+) name: (.*)", "original"), (r"Sort by: (\w+)\nNew names: (.*)", "tags"),
-                           (r"Sort by (\w+) name\. New names: (.*)", "json")):
+        for pattern, s in ((r"by (\w+) name: (.*)", "original"),
+                           (r"Sort by: (\w+)\n(?:New names|Names): (.*)", "tags"),
+                           (r"Sort by (\w+) name\. (?:New names|Names): (.*)", "json")):
             m = re.search(pattern, u)
             if m:
                 style, by = s, m.group(1)

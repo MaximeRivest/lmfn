@@ -36,7 +36,7 @@ def test_an_adapter_can_be_an_lmcc_json_file(tmp_path):
     from lmfn.core import _REGISTRY
     data_only = lmcc.adapter(name="alphabet_std_json", messages=[
         lmcc.system("{instruction}\n\nReply with one line:\nANSWER: {answer}"), lmcc.turns(),
-        lmcc.user("Sort by {by} name. New names: {names}")],
+        lmcc.user("Sort by {by} name. {% if first_turn %}Names{% else %}New names{% endif %}: {names}")],
         formats={"list[str]": "json", "list[Entry]": "json"})
     path = tmp_path / "a.json"
     path.write_text(json.dumps(data_only.dump(registry=_REGISTRY)))
@@ -59,8 +59,8 @@ def test_unknown_adapter_names_are_listed():
 
 
 def test_inputs_travel_in_the_user_turn_and_are_lifted():
-    msg = lv.user_turn(names=["AnnJones"], by="LAST")
-    assert lv.decode_inputs(sort_names, msg) == {"names": ["AnnJones"], "by": "LAST"}
+    msg = lv.user_turn(names=["AnnJones"], by="LAST", first_turn=True)
+    assert lv.decode_inputs(sort_names, msg) == {"names": ["AnnJones"], "by": "LAST", "first_turn": True}
     with pytest.raises(ValueError, match="user_turn"):
         lv.decode_inputs(sort_names, "please sort AnnJones")
 

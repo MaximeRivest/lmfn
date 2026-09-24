@@ -29,10 +29,9 @@ class Entry:
 
 
 @lmfn.ai
-def sort_names(names: list[str], by: Literal["FIRST", "LAST"]) -> list[Entry]:
+def sort_names(names: list[str], by: Literal["FIRST", "LAST"], first_turn: bool) -> list[Entry]:
     """Keep an alphabetically sorted list of every name given so far, sorted by
-    first or last name. Mark the names that are new this turn; on the first
-    turn there is no earlier list, so no name is marked."""
+    first or last name. After the first list, mark the names that are new."""
 
 
 # ------------------------------------------------------------------ formats
@@ -85,17 +84,17 @@ INPUT_FORMATS = {"list[str]": comma_list}
 # ------------------------------------------------------------------ adapters
 
 ADAPTERS = {
-    # The original environment's wording: user messages only, the
-    # `combined_alphabetical_sorted` tags, one name per line, `// new name!`.
-    # Differences from the original, stated: one tag on every turn (the
-    # original uses `alphabetical_sorted` on the first — a reply layout that
-    # changes with the turn is what lmcc forbids, §4), the format example on
-    # every turn, and no randomized example length.
+    # The original environment's wording, first turn and follow-ups, as user
+    # messages only. Differences from the original, stated: one tag on every
+    # turn (the original uses `alphabetical_sorted` on the first; a reply
+    # layout that changes with the turn is what lmcc forbids, §4), the format
+    # example on every turn, and no randomized example length.
     "original": lmcc.adapter(name="alphabet_original", messages=[
         lmcc.turns(),
-        lmcc.user("Sort ALL of these names alphabetically by {by} name: {names}\n\n"
-                  "These are in addition to any prior list. Mark any NEW names (that weren't "
-                  f"in the prior list) with `{NEW}` at the end; on the first list, mark none.\n\n"
+        lmcc.user("{% if first_turn %}Sort these names in alphabetical order by {by} name: {names}"
+                  "{% else %}Now sort ALL of these names alphabetically by {by} name: {names}\n\n"
+                  "These are in addition to the prior list. Mark any NEW names (that weren't "
+                  f"in the prior list) with `{NEW}` at the end.{{% endif %}}\n\n"
                   "Use exactly this format:\n"
                   "{% for f in outputs %}<combined_alphabetical_sorted>\n{f.value}\n"
                   "</combined_alphabetical_sorted>{% endfor %}"),
@@ -107,13 +106,13 @@ ADAPTERS = {
                     f"`{NEW}`.\n\nReply in exactly this form:\n"
                     "{% for f in outputs %}<{f.name}>\n{f.value}\n</{f.name}>\n{% endfor %}"),
         lmcc.turns(),
-        lmcc.user("Sort by: {by}\nNew names: {names}"),
+        lmcc.user("Sort by: {by}\n{% if first_turn %}Names{% else %}New names{% endif %}: {names}"),
     ], formats={**INPUT_FORMATS, "list[Entry]": lines}),
 
     # The answer as JSON after a label.
     "json": lmcc.adapter(name="alphabet_json", messages=[
         lmcc.system("{instruction}\n\nReply with one line:\nANSWER: {answer}"),
         lmcc.turns(),
-        lmcc.user("Sort by {by} name. New names: {names}"),
+        lmcc.user("Sort by {by} name. {% if first_turn %}Names{% else %}New names{% endif %}: {names}"),
     ], formats={**INPUT_FORMATS, "list[Entry]": as_json}),
 }
