@@ -12,5 +12,9 @@ license = { text = "MIT" }
 # ../lmcc/python and lm15 at the release lmcc pins.
 dependencies = []
 
+[project.optional-dependencies]
+# the verifiers harness (`lmfn_verifiers`, harness id `lmfn-verifiers`)
+verifiers = ["verifiers"]
+
 [tool.setuptools]
-packages = ["lmfn"]
+packages = ["lmfn", "lmfn_verifiers"]

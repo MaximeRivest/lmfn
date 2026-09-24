@@ -24,7 +24,7 @@ from lmcc_std.tools import Tool, ToolCall
 from . import models
 
 CONFIG_FIELDS = frozenset(lm15.Config.__dataclass_fields__)
-OWN_SETTINGS = frozenset({"model", "capabilities"})
+OWN_SETTINGS = frozenset({"model", "capabilities", "router"})
 
 _REGISTRY = lmcc.Registry()
 lmcc_std.install(_REGISTRY)
@@ -59,9 +59,14 @@ class configure:
         return False
 
 
-def router() -> lm15.LMRouter:
-    """The lm15 router lmfn sends through (provider keys from the environment)."""
+def router():
+    """The lm15 router lmfn sends through: the ``router`` setting when one is
+    set (per block, function or call, so concurrent runs can each have their
+    own), else a shared LMRouter with provider keys from the environment."""
     global _router
+    own = _settings.get().get("router")
+    if own is not None:
+        return own
     if _router is None:
         _router = lm15.LMRouter()
     return _router
@@ -99,6 +104,8 @@ class CallResult:
     response: lm15.Response
     responses: list
     attempts: int = 1
+    refusal: "lmcc.Refusal | None" = None
+    """The reply could not be read (``on_unreadable="record"``); ``value`` is None."""
 
     @property
     def usage(self) -> dict:
@@ -187,9 +194,13 @@ class Function:
     """A typed function whose body is a model call. Build with ``@lmfn.ai``."""
 
     def __init__(self, func, *, adapter=None, reasoning=False, tools=(), max_steps=8,
-                 examples=(), retries=0, tool_errors="report", settings=None):
+                 examples=(), retries=0, tool_errors="report", on_unreadable="raise",
+                 settings=None):
         if tool_errors not in ("report", "raise"):
             raise TypeError("tool_errors is 'report' or 'raise'")
+        if on_unreadable not in ("raise", "record"):
+            raise TypeError("on_unreadable is 'raise' or 'record'")
+        self.on_unreadable = on_unreadable
         self.settings = _check_settings(settings or {}, f"@ai on {func.__name__}")
         self.func = func
         self.__name__ = func.__name__
@@ -216,6 +227,15 @@ class Function:
                           "settings": {**self.settings, **_check_settings(settings, "using")}}
         return clone
 
+    def _router(self):
+        return self.settings.get("router") or router()
+
+    def with_adapter(self, adapter) -> "Function":
+        """A copy of this function that lays calls out with another lmcc adapter."""
+        clone = object.__new__(Function)
+        clone.__dict__ = {**self.__dict__, "_plans": {}, "adapter": adapter}
+        return clone
+
     def _resolved(self) -> dict:
         merged = {**_settings.get(), **self.settings}
         if "model" not in merged:
@@ -225,8 +245,8 @@ class Function:
     def plan(self) -> lmcc.Plan:
         """The lmcc plan for the current model: bound once per model and capabilities."""
         s = self._resolved()
-        provider = router().resolve(s["model"]).provider
-        caps = {**models.capabilities(provider, router().resolve(s["model"]).model),
+        provider = self._router().resolve(s["model"]).provider
+        caps = {**models.capabilities(provider, self._router().resolve(s["model"]).model),
                 **s.get("capabilities", {})}
         key = (s["model"], json.dumps(caps, sort_keys=True))
         if key not in self._plans:
@@ -288,7 +308,18 @@ class Function:
         attempts = 0
         for _ in range(self.max_steps):
             rendered = plan.render(turn, turns=past)
-            response, reading, attempts = self._complete(plan, rendered, model, responses, attempts)
+            try:
+                response, reading, attempts = self._complete(plan, rendered, model, responses, attempts)
+            except lmcc.Refusal as err:
+                if self.on_unreadable != "record" or not err.code.startswith("parse-") or not responses:
+                    raise
+                # keep the reply as it came, values empty: a verbatim replay can
+                # still write it into the next request (lmcc D-48)
+                turn = turn.with_step(lmcc.ModelStep({}, lmcc_core_message(responses[-1]),
+                                                     lmcc.turn.sha256(rendered.request()), plan.calls_field))
+                turn = dataclasses.replace(turn.finish(), meta={**turn.meta, "refusal": err.describe()})
+                return CallResult(None, {}, [], turn, responses[-1], responses, attempts,
+                                  refusal=err)
             turn = turn.with_step(lmcc.ModelStep(reading.values, lmcc_core_message(response),
                                                  lmcc.turn.sha256(rendered.request()), plan.calls_field))
             calls = reading.values.get("calls") or []
@@ -304,7 +335,7 @@ class Function:
         request = lmcc_lm15.request(rendered, model=model, config=self._config())
         overrides: dict = {}
         for attempt in range(self.retries + 1):
-            response = router().complete(request)
+            response = self._router().complete(request)
             responses.append(response)
             attempts += 1
             try:
@@ -375,7 +406,7 @@ class Streamed:
         s = plan.stream()
         parts: list = []
         end = None
-        for event in router().stream(request):
+        for event in fn._router().stream(request):
             if isinstance(event, lm15.StreamDeltaEvent):
                 delta = lm15.serde.delta_to_dict(event.delta)
                 parts.append(delta)
@@ -408,12 +439,14 @@ def lmcc_core_message(response: lm15.Response) -> dict:
 
 
 def ai(func=None, *, model=None, adapter=None, reasoning=False, tools=(), max_steps=8,
-       examples=(), retries=0, tool_errors="report", capabilities=None, **settings):
+       examples=(), retries=0, tool_errors="report", on_unreadable="raise",
+       capabilities=None, **settings):
     """``@lmfn.ai`` — the parameters are the inputs, the return type is the
     output, the docstring is the instruction. Options: ``model``, lm15
     Config fields (``temperature``, ``max_tokens``, ...), ``reasoning``,
     ``tools``, ``max_steps``, ``examples``, ``retries``, ``tool_errors``,
-    ``adapter``, ``capabilities``."""
+    ``on_unreadable`` (``"raise"``, or ``"record"``: keep an unreadable reply as
+    a turn with no values and ``.refusal`` set), ``adapter``, ``capabilities``."""
     if model is not None:
         settings["model"] = model
     if capabilities is not None:
@@ -422,5 +455,5 @@ def ai(func=None, *, model=None, adapter=None, reasoning=False, tools=(), max_st
     def wrap(f):
         return Function(f, adapter=adapter, reasoning=reasoning, tools=tools, max_steps=max_steps,
                         examples=examples, retries=retries, tool_errors=tool_errors,
-                        settings=settings)
+                        on_unreadable=on_unreadable, settings=settings)
     return wrap if func is None else wrap(func)
