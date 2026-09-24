@@ -59,8 +59,10 @@ def _read_lines(capture, field):
     return lift(field.annotation, out)
 
 
-lines = lmcc.make_format(write=_write_lines, read=_read_lines,
-                         describe=lambda: f"Name1\nName2 {NEW}\n(one name per line; new names end with {NEW})")
+# The example shows plain names, as the original's first-turn example does:
+# showing the mark in every prompt made gpt-4.1-mini mark every name new on the
+# first turn, and copy the example into the tag (live run, 2026-09-23).
+lines = lmcc.make_format(write=_write_lines, read=_read_lines, describe=lambda: "Name1\nName2\n...")
 
 
 def _write_json(entries) -> str:
@@ -101,7 +103,8 @@ ADAPTERS = {
 
     # lmfn's house style: the instruction in the system message, tags per field.
     "tags": lmcc.adapter(name="alphabet_tags", messages=[
-        lmcc.system("{instruction}\n\nReply in exactly this form:\n"
+        lmcc.system("{instruction}\n\nOne name per line; end a new name's line with "
+                    f"`{NEW}`.\n\nReply in exactly this form:\n"
                     "{% for f in outputs %}<{f.name}>\n{f.value}\n</{f.name}>\n{% endfor %}"),
         lmcc.turns(),
         lmcc.user("Sort by: {by}\nNew names: {names}"),
