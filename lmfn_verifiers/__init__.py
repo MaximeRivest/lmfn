@@ -48,7 +48,7 @@ from lmfn.core import Function
 INFO_KEY = "lmfn"
 ENVELOPE = "lmfn_inputs"
 
-__all__ = ["AnswerOnlyTask", "AnswerOnlyTaskConfig", "RowTaskData", "LmfnHarness", "LmfnHarnessConfig",
+__all__ = ["sft_rows", "AnswerOnlyTask", "AnswerOnlyTaskConfig", "RowTaskData", "LmfnHarness", "LmfnHarnessConfig",
            "OneTurnEnv", "strip_reasoning", "turns", "user_turn"]
 
 
@@ -342,3 +342,38 @@ class OneTurnEnv(vf.SingleAgentEnv):
     async def run(self, task, agents):
         async with agents.agent.interaction(task) as interaction:
             await interaction.turn(user_turn(**task.data.info["inputs"]))
+
+
+# ------------------------------------------------------------------ SFT export
+
+
+def sft_rows(traces_jsonl: str | Path, *, min_reward: float | None = None,
+             readable_only: bool = True) -> list[dict]:
+    """Teacher rollouts (a vf-eval ``traces.jsonl``) as SFT rows
+    ``{"prompt": [messages], "completion": [assistant message]}`` — the format
+    prime-rl's SFT trainer reads. One row per recorded model call: the exact
+    request the teacher answered, and its reply as recorded (reasoning already
+    dropped by ``AnswerOnlyTask``). ``readable_only`` skips turns lmcc could
+    not read; ``min_reward`` skips rollouts scored below it."""
+    from verifiers.v1.trace import Trace
+    rows: list[dict] = []
+    for line in Path(traces_jsonl).read_text().splitlines():
+        record = json.loads(line)
+        for data in record.get("traces", [record]):
+            if min_reward is not None:
+                score = sum((r or {}).get("score", 0) * (r or {}).get("weight", 1)
+                            for r in (data.get("rewards") or {}).values())
+                if score < min_reward:
+                    continue
+            recorded = data.get("info", {}).get(INFO_KEY, {}).get("turns", [])
+            if readable_only and any("refusal" in t for t in recorded):
+                continue
+            trace = Trace.model_validate(data)
+            for branch in trace.branches:
+                messages = [m.model_dump(exclude_none=True) for m in branch.messages]
+                for i, m in enumerate(messages):
+                    if m["role"] == "assistant":
+                        m.pop("reasoning_content", None)
+                        m.pop("provider_state", None)
+                        rows.append({"prompt": messages[:i], "completion": [m]})
+    return rows

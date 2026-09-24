@@ -162,3 +162,21 @@ def test_strip_reasoning_removes_an_inline_think_block():
                         message=AssistantMessage(content=content))
     assert lv.strip_reasoning(response("<think>hm</think>\nIntent: x")).message.content == "Intent: x"
     assert lv.strip_reasoning(response("Intent: x")) is None
+
+
+@needs_v1_cli
+def test_teacher_traces_export_as_sft_rows_without_reasoning(fake_model, tmp_path):
+    pytest.importorskip("banking77_lmfn")
+    vf_eval = Path(sys.executable).parent / "vf-eval"
+    subprocess.run(
+        [str(vf_eval), "banking77-lmfn", "--env.agent.harness.id", "lmfn-verifiers",
+         "--env.agent.harness.program", "banking77_lmfn.program:classify",
+         "--env.agent.harness.adapter", "compact", "--model", "fake",
+         "--client.base-url", fake_model, "--client.api-key-var", "FAKE_KEY",
+         "--num-tasks", "3", "--no-push", "--no-rich", "--output-dir", str(tmp_path)],
+        env={**os.environ, "FAKE_KEY": "x"}, capture_output=True, text=True, timeout=300, check=True)
+    rows = lv.sft_rows(next(tmp_path.rglob("traces.jsonl")))
+    assert len(rows) == 3
+    for row in rows:
+        assert [m["role"] for m in row["prompt"]] == ["system", "user"]
+        assert row["completion"] == [{"role": "assistant", "content": "Intent: card_arrival"}]

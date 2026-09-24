@@ -6,15 +6,14 @@
 # drops its reasoning before the trace is recorded, so the student is trained
 # on "Intent: <label>" only, in the compact adapter's layout.
 #
-# NOT RUNNABLE YET: the taskset must be pushed to the Environments Hub
-# (`prime env push -p examples/banking77_lmfn -v PRIVATE`), and its
-# dependencies installable there: lmfn (unpublished) and lmcc >= 0.8.2
-# (on the verifiers-harness branch, unreleased). Replace OWNER below.
+# The taskset is on the Environments Hub (private):
+#   prime env push -p examples/banking77_lmfn -v PRIVATE
+# Its dependency lmfn[verifiers] (and lmcc 0.8.2) come from PyPI.
 
 model = "Qwen/Qwen3.5-0.8B"
 loss = "sft"
-max_steps = 50
-batch_size = 64
+max_steps = 20
+batch_size = 32
 rollouts_per_example = 1          # one teacher answer per row
 
 [teacher]
@@ -29,5 +28,5 @@ max_tokens = 32                   # the student answers in one short line
 enable_thinking = false           # matches the empty <think></think> it is trained on
 
 [[env]]
-taskset = { id = "OWNER/banking77-lmfn", split = "train" }
+taskset = { id = "maximerivest/banking77-lmfn", split = "train" }
 harness = { id = "lmfn-verifiers", program = "banking77_lmfn.program:classify", adapter = "compact" }
