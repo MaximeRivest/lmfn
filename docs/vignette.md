@@ -19,7 +19,7 @@ This vignette walks through the whole library with one running example: reading 
 import os
 from pathlib import Path
 
-# provider keys (OPENAI_API_KEY=..., one per line); keys already set win
+# Load provider keys from the local .env file without replacing keys already set.
 env_file = Path("~/Projects/lm15-dev/.env").expanduser()
 if env_file.exists():
     for line in env_file.read_text().splitlines():
@@ -29,11 +29,12 @@ if env_file.exists():
 
 import lmfn
 
-lmfn.configure(model="gpt-6-luna", temperature=0)
+# Use this model for functions that don't specify their own.
+lmfn.configure(model="gpt-4.1-mini")
 ```
 
 ```output
-<lmfn.core.configure object at 0x7709e48c6bd0>
+<lmfn.core.configure object at 0x7559f3ffd8e0>
 ```
 
 `configure` sets the model every function uses unless told otherwise. Any model name lm15 knows works here.
@@ -50,33 +51,7 @@ summarize("We waited forty minutes for a table, but the ramen was the best "
 ```
 
 ```output
-Traceback (most recent call last):
-  File "/home/maxime/.cache/rat/kernels/py@lmfn/python-kernel.py", line 847, in run_code
-    result = eval(compile(expr, "<rat>", "eval"), namespace, namespace)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<rat>", line 5, in <module>
-  File "/home/maxime/Projects/lmfn/lmfn/core.py", line 279, in __call__
-    return self.call(*args, **kwargs).value
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/maxime/Projects/lmfn/lmfn/core.py", line 291, in call
-    response, reading, attempts = self._complete(plan, rendered, model, responses, attempts)
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/maxime/Projects/lmfn/lmfn/core.py", line 307, in _complete
-    response = router().complete(request)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/maxime/Projects/lmfn/.venv/lib/python3.12/site-packages/lm15/router.py", line 867, in complete
-    return self.lm(request.model).complete(_routed_request(request, resolution))
-           ^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/maxime/Projects/lmfn/.venv/lib/python3.12/site-packages/lm15/router.py", line 861, in lm
-    lm = _build_lm(resolution, self.config, self._adapters)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/maxime/Projects/lmfn/.venv/lib/python3.12/site-packages/lm15/router.py", line 720, in _build_lm
-    raise MissingCredentialError(
-lm15.router.MissingCredentialError: no API key found for provider 'openai'. Set OPENAI_API_KEY in the environment, or pass RouterConfig(api_keys={'openai': "..."}).
-
-  To fix:
-    - Set the provider API key in your environment: OPENAI_API_KEY=...
-    - Configure credentials for openai
+'Despite a forty-minute wait for a table, the ramen was the best the reviewer had outside Tokyo and the staff were apologetic.'
 ```
 
 That is the whole program. There is no body and no prompt string:
@@ -196,13 +171,11 @@ print("repairs:  ", res.repairs)
 
 ```output
 value:     27.6
-reasoning: Tip is 15% of 96 dollars.
-Calculate 0.15 times 96.
-Add 96 and 14.4 to get total amount.
-Divide 110.4 by 4.
-Calculate 110.4 divided by 4.
-tokens:    82 in, 175 out
-repairs:   [{'repair': 'ignored', 'saw': 'First, we calculate the total amount including the tip.   \n15% of 96 is 0.15 × 96 = 14.4 dollars.   \nAdding the tip to the original amount: 96 + 14.4 = 110.4 dollars.   \nNow, divide the total amount by 4 to find how much each friend pays.   \n110.4 ÷ 4 = 27.6 dollars.'}]
+reasoning: 15% of 96 = 0.15 × 96 = 14.4
+Total amount = 96 + 14.4 = 110.4
+Each pays = 110.4 ÷ 4 = 27.6
+tokens:    82 in, 139 out
+repairs:   [{'repair': 'ignored', 'saw': 'First, we calculate the tip amount by taking 15% of 96 dollars. \n\nNext, add the tip to the original bill to find the total amount paid. \n\nSince four friends share this total equally, we divide the total amount by 4. \n\nTherefore, each friend pays 27.6 dollars.'}]
 ```
 
 - `value`: what `bill(...)` would have returned.
@@ -320,7 +293,7 @@ for step in res.turn.steps:
 ```
 
 ```output
-The cuisine with the lowest average stars is Mexican, with an average rating of 2.5. People complain about cold burritos and rude staff.
+The Mexican cuisine has the lowest average stars, with an average rating of 2.5. People complain about cold food and rude staff.
 
 model asked: SELECT cuisine, AVG(stars) as avg_stars FROM reviews GROUP BY cuisine ORDER BY avg_stars ASC LIMIT 1;
 model asked: SELECT review FROM reviews WHERE cuisine = 'mexican' AND stars < 3;
@@ -364,7 +337,7 @@ for model in ["gpt-4.1-mini", "claude-haiku-4-5", "gemini-2.5-flash"]:
 ```output
 gpt-4.1-mini       Review(sentiment=<Sentiment.mixed: 'mixed'>, stars=3, would_return=False, dish='curry')
 claude-haiku-4-5   Review(sentiment=<Sentiment.mixed: 'mixed'>, stars=3, would_return=False, dish='curry')
-gemini-2.5-flash   Review(sentiment=<Sentiment.mixed: 'mixed'>, stars=4, would_return=True, dish='curry')
+gemini-2.5-flash   Review(sentiment=<Sentiment.mixed: 'mixed'>, stars=4, would_return=False, dish='curry')
 ```
 
 `max_tokens=2000` is there for Gemini 2.5, which thinks before it answers by default, and that thinking counts against the token budget.
@@ -403,8 +376,8 @@ print(s.result.value)
 ```
 
 ```output
-'Despite' ' a' ' forty' '-minute' ' wait' ' for' ' a' ' table' ',' ' the' ' ramen' ' was' ' the' ' best' ' outside' ' Tokyo' ' and' ' the' ' staff' ' apologized' ' twice' '.' 
-Despite a forty-minute wait for a table, the ramen was the best outside Tokyo and the staff apologized twice.
+'Despite' ' waiting' ' forty' ' minutes' ' for' ' a' ' table' ',' ' the' ' ramen' ' was' ' the' ' best' ' outside' ' Tokyo' ' and' ' the' ' staff' ' apologized' ' twice' '.' 
+Despite waiting forty minutes for a table, the ramen was the best outside Tokyo and the staff apologized twice.
 ```
 
 After the loop, `s.result` is the same `CallResult` that `call` returns. Streaming does not work with tools yet.
@@ -425,7 +398,7 @@ print(second.value)
 ```
 
 ```output
-Thank you, Ana; your table for four at 7pm is reserved.
+Thank you, Ana; your table for four at 7 PM is confirmed.
 You gave the name Ana for the reservation.
 ```
 
@@ -440,7 +413,7 @@ print(len(chat), "turns so far")
 ```
 
 ```output
-Certainly, Ana; your reservation for five people at 7pm is confirmed.
+Ana, your reservation for five people at 7pm is confirmed.
 3 turns so far
 ```
 
