@@ -327,3 +327,20 @@ mandatory). Accuracy ±2.8 points (1 s.e.).
 \* answered 116 of 200 (rate-limited); accuracy on those.
 Reference, not allowed: Claude Opus 5.5 92.0%. Students on human labels
 (full test set): ModernBERT-base 93.2%, Ettin-17M 91.5%.
+
+## Majority vote of the distillable models (2026-09-25)
+
+Same 200 answers as above, no new calls; ties go to the most accurate model.
+
+| ensemble | accuracy |
+|---|---|
+| best single (Kimi K3 / Qwen3.8 2.4T) | 83.5% |
+| vote of six (Kimi K3, Qwen3.8 2.4T, DeepSeek V4 Pro, Kimi K2.6, DeepSeek V4.1 Flash, Nemotron 3 Ultra) | 83.0% |
+| vote of top 3 / top 4 + Qwen3.8 Max prime / all seven | 83.0% / 83.0% / 82.5% |
+| best 5-model subset, chosen on these same questions (optimistic) | 84.5% |
+| "oracle": at least one of the six is right | 88.0% |
+
+Vote minus Kimi K3: -0.5 points, 95% bootstrap interval [-2.0, +1.0] (better
+on 1 question, worse on 2): no gain. The models make the same mistakes.
+Agreement is a strong confidence signal instead: all six agree on 154/200
+questions (77%), and are right on 92.2% of them; on the 46 others, 52%.
