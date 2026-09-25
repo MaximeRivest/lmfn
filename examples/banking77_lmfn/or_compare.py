@@ -25,13 +25,14 @@ SYSTEM = ("Classify the bank customer's message by what they need. Answer with e
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "intent", "strict": True, "schema": {
     "type": "object", "properties": {"intent": {"type": "string", "enum": LABELS}},
     "required": ["intent"], "additionalProperties": False}}}
-OUT = "/home/maxime/Projects/primeintellect/outputs/or-distillable"
+EFFORT = os.environ.get("EFFORT")          # e.g. xhigh / high: force a reasoning level
+OUT = "/home/maxime/Projects/primeintellect/outputs/or-distillable" + (f"-{EFFORT}" if EFFORT else "")
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def body(model, text, reasoning, structured):
     quick = reasoning in (None, {"enabled": False})          # None: model has no reasoning setting
-    b = {"model": model, "max_tokens": 50 if quick else 4000,
+    b = {"model": model, "max_tokens": 50 if quick else (32000 if EFFORT else 4000),
          "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}],
          "provider": {"enforce_distillable_text": True, "require_parameters": True}}
     if reasoning is not None:
@@ -60,7 +61,9 @@ def parse(content, structured):
 
 async def pick_mode(c, model):
     """First (reasoning, structured) combination the model accepts."""
-    for reasoning in ({"enabled": False}, None, {"effort": "minimal"}, {"effort": "low"}):
+    modes = ({"effort": e} for e in (["xhigh", "high"] if EFFORT == "xhigh" else [EFFORT])) if EFFORT else \
+            ({"enabled": False}, None, {"effort": "minimal"}, {"effort": "low"})
+    for reasoning in modes:
         for structured in (True, False):
             r = await c.post(URL, json=body(model, TEST[0]["text"], reasoning, structured))
             if r.status_code == 200 and r.json().get("choices"):

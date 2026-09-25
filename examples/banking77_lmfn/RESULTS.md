@@ -344,3 +344,26 @@ Vote minus Kimi K3: -0.5 points, 95% bootstrap interval [-2.0, +1.0] (better
 on 1 question, worse on 2): no gain. The models make the same mistakes.
 Agreement is a strong confidence signal instead: all six agree on 154/200
 questions (77%), and are right on 92.2% of them; on the 46 others, 52%.
+
+## Highest reasoning level (2026-09-25)
+
+`EFFORT=xhigh or_compare.py ...`: the same six, reasoning at "xhigh" (all
+accepted it), same prompt, 200 questions, distillation flag on. Paired
+comparison with the reasoning-off run; 95% bootstrap interval.
+
+| model | off | xhigh | change | fixed / broke | thinking tokens | median latency | $ per 1,000 |
+|---|---|---|---|---|---|---|---|
+| **Kimi K2.6** | 78.5% | **85.0%** | **+6.5 [+3.0, +10.5]** | 14 / 1 | 591 | 8.1 s | 0.14 → 1.83 |
+| **DeepSeek V4.1 Flash** | 77.5% | 82.0% | **+4.5 [+0.5, +8.5]** | 13 / 4 | 198 | 0.8 s | 0.06 → 0.26 |
+| Qwen3.8 2.4T | 83.5% | 83.5% | 0.0 [-3.0, +3.0] | 5 / 5 | 158 | 2.1 s | 0.94 → 1.09 |
+| DeepSeek V4 Pro | 80.5% | 80.0% | -0.5 [-4.0, +3.5] | 7 / 8 | 369 | 1.6 s | 0.27 → 1.69 |
+| Kimi K3 | 83.5% | 82.0% | -1.5 [-3.5, 0.0] | 0 / 3 | 119 | 2.4 s | 3.15 → 5.90 |
+| Nemotron 3 Ultra | 81.5% | (70.0%) | failed run | 4 / 27 | 0 | 1.6 s | 0.11 → 0.10 |
+| vote of six | 83.0% | 84.5% | | | | | |
+
+Nemotron's xhigh run is not a model result: routed to DeepInfra, it
+reported no reasoning on any row and left 19 of 200 unanswered (77.3% on the
+181 it answered). Even at the top setting the models think briefly
+(120-590 tokens). Thinking lifts the weaker models to the level of the
+strongest, not above: the ceiling stays near 83-85%, against Opus 92% and
+human-label students 91-93%. Run cost ≈ $2.20.
