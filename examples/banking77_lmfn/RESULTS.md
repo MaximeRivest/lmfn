@@ -261,3 +261,28 @@ ambiguous pairs (e.g. card_arrival vs card_delivery_estimate); teachers are
 scored against conventions they never saw. Accuracy against these labels
 therefore measures fit to this labelling scheme, not only understanding.
 For reference, Opus 5.5 scored 92.0% on the 200-question subset (±1.9).
+
+## Training Ettin-17M on a laptop CPU (2026-09-25)
+
+`cpu_train.py`: the 91.5% recipe (human labels, 9,493 rows, 6 passes, batch
+32, AdamW 1e-4, warmup + cosine, clip 1.0) on XPSwhite: Intel i7-1065G7
+(4 cores / 8 threads, AVX-512 + VNNI, no bf16 hardware), 31 GB RAM,
+PyTorch 2.13 CPU, while the desktop was in use. The Iris Plus G7 GPU (Gen11)
+is not supported by PyTorch XPU and had no compute driver installed.
+
+Settings, 40 timed steps each:
+
+| setting | s/step | projected training |
+|---|---|---|
+| 4 threads, fp32, random batches | 0.64 | 19 min |
+| 8 threads (hyperthreads) | 1.64 | 49 min |
+| 4 threads, bf16 autocast (emulated) | 1.40 | 42 min |
+| **4 threads, fp32, length-grouped batches** | **0.31** | **9 min** |
+| 3 threads, grouped | 0.30 | 9 min |
+
+Full run (4 threads, grouped, seed 0): training 674 s (passes 101 → 122 s
+as the laptop heated), 688 s wall in total. **Accuracy 91.0%**, top-3 97.0%
+on all 3,076 test questions (GPU, same recipe, 3 seeds: 91.3-91.6%).
+Inference on the laptop: 14 ms per message, ~400 messages/s in batches.
+The random-batch (exact-order) run was stopped after 4 of 6 passes
+(~250-285 s per pass).
