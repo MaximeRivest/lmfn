@@ -286,3 +286,44 @@ on all 3,076 test questions (GPU, same recipe, 3 seeds: 91.3-91.6%).
 Inference on the laptop: 14 ms per message, ~400 messages/s in batches.
 The random-batch (exact-order) run was stopped after 4 of 6 passes
 (~250-285 s per pass).
+
+## OpenRouter models that allow distillation (2026-09-25)
+
+OpenRouter's own flag: with `provider.enforce_distillable_text = true` a
+request only reaches models whose authors allow training on their output.
+Probing all 368 text models: **112 allowed** (Qwen incl. the closed
+Qwen3.8 Max, DeepSeek, Kimi, NVIDIA Nemotron, Mistral, Meta Llama,
+Microsoft Phi-4); 248 refused, including every Claude, GPT, Gemini, GLM,
+MiMo, gemma and gpt-oss model, whatever their weights' license.
+
+`or_compare.py`: 20 allowed models, same 200 test questions and
+instruction, answer constrained to the 77 intents (JSON-schema enum), the
+distillation flag on every request, reasoning off (or minimal where it is
+mandatory). Accuracy ±2.8 points (1 s.e.).
+
+| model | accuracy | reasoning used | median latency | cost / 1,000 rows |
+|---|---|---|---|---|
+| qwen/qwen3.8-2.4t-a95b | 83.5% | 117 tokens | 2.15 s | $0.937 |
+| moonshotai/kimi-k3 | 83.5% | none | 1.1 s | $3.145 |
+| nvidia/nemotron-3-ultra-550b-a55b | 81.5% | none | 1.18 s | $0.106 |
+| qwen/qwen3.8-max-prime | 81.0% | 86 tokens | 3.31 s | $3.015 |
+| mistralai/mistral-small-2603 | 81.0% * | none | 0.63 s | $0.021 |
+| deepseek/deepseek-v4-pro-0813 | 80.5% | none | 0.67 s | $0.270 |
+| qwen/qwen3.8-flash | 79.5% | none | 1.24 s | $0.036 |
+| moonshotai/kimi-k2.6 | 78.5% | none | 0.62 s | $0.138 |
+| qwen/qwen3.8-max-0902 | 78.5% | 93 tokens | 4.84 s | $1.550 |
+| qwen/qwen3.8-omni-flash | 78.0% | none | 1.47 s | $0.148 |
+| deepseek/deepseek-v4-flash-0731 | 78.0% | none | 0.93 s | $0.026 |
+| deepseek/deepseek-v4.1-flash | 77.5% | none | 0.34 s | $0.057 |
+| mistralai/mistral-medium-3-5 | 77.5% | none | 0.58 s | $0.825 |
+| qwen/qwen3.8-27b | 77.0% | none | 0.5 s | $0.097 |
+| meta-llama/llama-4-maverick | 77.0% | none | 0.63 s | $0.131 |
+| meta-llama/llama-3.3-70b-instruct | 76.0% | none | 0.42 s | $0.330 |
+| qwen/qwen3.5-9b | 73.5% | none | 0.71 s | $0.046 |
+| nvidia/nemotron-3-super-120b-a12b | 73.0% | none | 1.15 s | $0.046 |
+| nvidia/nemotron-3.5-lightning | 69.0% | none | 2.92 s | $0.061 |
+| microsoft/phi-4 | 65.5% | none | 0.53 s | $0.032 |
+
+\* answered 116 of 200 (rate-limited); accuracy on those.
+Reference, not allowed: Claude Opus 5.5 92.0%. Students on human labels
+(full test set): ModernBERT-base 93.2%, Ettin-17M 91.5%.
