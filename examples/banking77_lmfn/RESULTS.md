@@ -503,3 +503,50 @@ the plain frame's; only K2.6's AUROC improves beyond noise. Its practical
 gains: the output is exactly one member name (no parsing) and it opens
 prefill on routes where the counting-test prefill failed (Kimi K3). The code
 prompt is longer (~1,300 tokens), which raises cost on cheap models.
+
+## Training Ettin-17M on a phone GPU (2026-09-25)
+
+Same recipe (human labels, 9,493 rows, 6 passes, batch 32, AdamW 1e-4,
+warmup + cosine, clip 1.0, length-grouped batches) on a Galaxy S21 Ultra
+(Snapdragon 888, Adreno 660 GPU, 10 GB RAM shared with the GPU), running
+entirely on the GPU through WebGPU in Chrome 153, with jax-js 0.1.25. Code:
+`~/Projects/ettin-phone` on lambda (`web/ettin.js` model and AdamW step,
+`web/train.html` run, `prep/` data export and PyTorch references).
+
+Checked against PyTorch: logits at start (max diff 7e-5), every gradient,
+one AdamW step, and a 60-step trajectory over every padded length (loss
+within 5e-6 relative at each step).
+
+| | training | accuracy | top-3 | per message |
+|---|---|---|---|---|
+| RTX 3090, PyTorch (3 seeds) | 42 s | 91.3-91.6% | 97.1% | 5 ms |
+| Laptop CPU i7-1065G7, PyTorch | 11 min 15 s | 91.0% | 97.0% | 14 ms |
+| **Phone GPU Adreno 660, jax-js/WebGPU** | **21 min 17 s** | **91.4%** | **97.0%** | **39 ms** |
+
+Phone: 0.71 s per step, passes 210-217 s with no thermal slowdown (plugged
+in, battery 40 °C); test set 183 messages/s. Pass losses 1.953, 0.338,
+0.124, 0.034, 0.0054, 0.0010 (laptop 1.962, 0.329, 0.117, 0.033, 0.0057,
+0.0011).
+
+What it took:
+- Embedding table restricted to the 3,376 token ids banking77 uses (of
+  50,368): the other rows have zero gradient, so the trained model is the
+  same on this data, and parameters drop from 16.9M to 4.9M.
+- jax-js patches (local copy): a view feeding a routine (the embedding
+  gradient's scatter) must be materialized; the GPU buffer reuse pool is
+  capped at 256 MB (uncapped, it kept up to 64 buffers of every size and
+  exhausted the phone's memory, which made Android kill other apps).
+- Sum of squares reduced one axis at a time: one 12.9M-element reduction
+  ran past the GPU watchdog and lost the device.
+- Attention masks as finite additive biases (jax-js's sequence-length
+  options produce NaN on padded rows).
+- Padded lengths 48, 80, 112 avoided: jax-js's WebGPU code for the fused
+  loss+gradient program gives wrong results there (forward-only and the
+  wasm backend are right). A first full run before this fix still reached
+  91.5% but with a 10x higher final loss.
+- One step in flight at a time (queueing 4 was slower: 0.87 s/step).
+
+Rust + Burn 0.21 on Vulkan (native binary over adb) was tried first:
+autotuned matmul hung on this driver, and without autotune it ran at
+3-28 GFLOP/s with wrong results for small shapes, so it was dropped.
+jax-js on the same GPU: 28-71 GFLOP/s, correct.
