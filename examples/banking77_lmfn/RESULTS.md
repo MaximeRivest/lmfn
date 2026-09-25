@@ -215,3 +215,27 @@ at effort "low" it used 2 reasoning tokens per question on average.
 200/200 valid answers. Standard error near 92% is ±1.9 points, so the gap
 to Kimi (10 points) is real. banking77 is public (2020), so part of this
 may be memorized test data; a fresh held-out set would settle it.
+
+## Soft (Jev's distribution) vs hard (Jev's top pick) targets (2026-09-25)
+
+`soft_vs_hard.py`: one change only, the target: Jev's 77-way distribution or
+a one-hot on its top choice. Same encoder, data, split, loss, passes; 3 seeds
+each. Evaluated on the FULL banking77 test set (3,076 questions; Jev labelled
+it in 5 s, 79.4% vs human). "Calibrated" = one temperature fitted on the 500
+validation rows' human labels, applied to both alike. Mean ± std over seeds.
+
+| student / data | target | accuracy | top-3 | agrees w/ Jev | ECE raw | ECE calibrated | mean conf. | 50% most conf. | 80% most conf. | NLL (calibrated) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ModernBERT-base / 9,493 | soft | 78.8 ±0.1 | **91.7** | 91.6 | **0.067** | **0.016** | 0.85 | **96.3** | **87.8** | **0.80** |
+| | hard | 78.6 ±0.3 | 90.6 | 91.0 | 0.152 | 0.036 | 0.94 | 92.8 | 86.8 | 0.95 |
+| Ettin-17M / 9,493 | soft | 77.3 ±0.3 | **91.4** | 89.8 | **0.077** | **0.019** | 0.85 | **95.9** | **86.6** | **0.83** |
+| | hard | 77.2 ±0.1 | 88.4 | 88.8 | 0.183 | 0.039 | 0.95 | 91.1 | 85.1 | 1.04 |
+| Ettin-17M / 1,894 | soft | **67.5** ±0.5 | **84.8** | 76.2 | **0.060** | **0.022** | 0.73 | **89.3** | **76.5** | **1.24** |
+| | hard | 65.3 ±0.7 | 80.3 | 73.6 | 0.198 | 0.036 | 0.85 | 85.2 | 74.2 | 1.52 |
+
+Top-1 accuracy: no difference with ~9.5k rows (+0.2 points, within seed and
+sampling noise); +2.2 points with 1.9k rows. Everything about the rest of
+the distribution improves clearly and at every size: top-3 +1 to +4.5
+points, calibration error halved raw and still halved after temperature
+scaling, and the most-confident-half accuracy +3.5 to +4.8 points (the
+"send unsure rows to a bigger model" use). Training time identical.
