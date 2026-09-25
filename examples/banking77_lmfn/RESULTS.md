@@ -170,3 +170,31 @@ Validation KL flattens at ~0.27 from pass ~17 on (lr 1e-3): the model is at
 its capacity, not under-trained. Peak training memory 0.1 GB. At these speeds
 single-thread tokenization (~21,000 rows/s) is the bottleneck, so real
 end-to-end throughput needs tokenization spread over several cores.
+
+## OpenRouter token logprobs as 77-way soft targets (2026-09-25)
+
+`or_logprob_targets.py`: the model answers with one intent name (temperature
+0, no reasoning); the class distribution is rebuilt from the top-k
+alternatives along the answered path (intent names span 2-6 tokens). Same 200
+test questions; compared with the human labels and with Jev.
+
+What each model offers on OpenRouter (checked per provider, 2026-09-25):
+
+| model | logprobs | reasoning off? | alternatives per token | usable |
+|---|---|---|---|---|
+| xiaomi/mimo-v2.6-pro | no provider returns them | — | — | no |
+| qwen/qwen3.8-max-0902 | Alibaba only | no: mandatory (121 reasoning tokens even at "minimal"); answer then 1.000 certain | 5 | no |
+| z-ai/glm-5.3 | ~20 providers | "minimal" gives 0 reasoning on most rows, but 22/200 rows still reasoned, 4 answered nothing | 20 (Together); 5 (Fireworks); **Modal and Parasail return wrong data** (the same alternatives repeated at every position) | poorly |
+| **moonshotai/kimi-k3** | 9 providers | **yes** (`reasoning.enabled=false`), 0 reasoning tokens on all 200 | 20 (Parasail) | **yes** |
+
+| teacher (200 test questions) | accuracy | top-3 | agrees w/ Jev | KL(Jev‖it) | mean conf. | ECE | rows with spread (<0.95) | coverage (mean / min) | cost per 1,000 rows | median latency |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Jev (for reference) | 78.5% | 91% | — | 0 | 0.89 | 0.105 | — | 1.0 | $0.04 | 0.12 s |
+| **Kimi K3 (Parasail)** | **82.0%** | 90.5% | 87.5% | 0.41 | 0.91 | 0.093 | 33% | **0.976** / 0.657 | **$1.54** | 0.48 s |
+| GLM-5.3 (Together) | 71.0% | 79.5% | 78.0% | 1.52 | 0.88 | 0.179 | 26% | 0.918 / 0.0 | $0.20 | 0.26 s |
+
+Coverage = share of probability that lands on a single intent; the rest is
+formatting/prose tokens ("lost") or top-20 truncation. Top-3 is capped by the
+top-20 alternatives seen along one path, so tails beyond them are zero.
+DeepSeek V4.1 Flash (earlier hard labels) scored 82.9% on the 175 questions it
+answered; Kimi answered all 200.
