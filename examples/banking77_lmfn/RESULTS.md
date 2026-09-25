@@ -413,3 +413,27 @@ Agreement instead (enum answers from the earlier runs, any model):
 At the same share kept (~80-85%), one Kimi model's logprobs give 90-92%
 accuracy on the kept rows; two cheap models agreeing give ~86%. Logprobs also
 let the threshold be moved; agreement gives one fixed split.
+
+## Assistant prefill among distillable models (2026-09-25)
+
+Test: the request ends with an assistant message "1, …, 10. Now backwards:
+10, 9," — a model that honors the prefill continues with "8"; one that
+ignores it starts over at "1". Distillation flag on, reasoning off.
+
+Default routing, all 108 allowed models: 38 continue, 45 start over, 18
+unclear (empty or odd answers), 4 refused. Support depends on the provider,
+not only the model; per provider for the models that matter:
+
+| model | providers that honor prefill |
+|---|---|
+| Kimi K3 | none of 15 |
+| Kimi K2.6 | Baidu, StreamLake (2 of 18) |
+| DeepSeek V4 Flash 0731 | 21 of 29 (not AtlasCloud, BaseTen, Cloudflare, DigitalOcean, Parasail, Together, Wafer) |
+| DeepSeek V4 Pro 0813 | CoreWeave, DeepInfra, DeepSeek, Fireworks, GMICloud, NextBit, Phala, StreamLake, Venice (9 of 21) |
+| DeepSeek V4.1 Flash | clean: DeepSeek, OpenInference, Phala; with stray text first: CoreWeave, DeepInfra, Fireworks, Makora, Together |
+| Nemotron 3 Ultra | all 3 (BaseTen, DeepInfra, Venice) |
+| Nemotron 3 Super | DeepInfra |
+| Qwen3.8 2.4T / Max prime / Flash | none |
+| Mistral (own API) | yes, the prefill is echoed back; Mistral Small 4 untestable (rate-limited) |
+
+Pin a working provider with provider.order + allow_fallbacks=false.
