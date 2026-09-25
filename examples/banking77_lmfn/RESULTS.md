@@ -154,3 +154,19 @@ encoder). One Python thread tokenizes ~22,000 rows/s, so at 17M the tokenizer,
 not the GPU, is the limit unless tokenization is parallelized across cores.
 Accuracy differences stay within the ±2.8-point noise of 200 questions; KL to
 Jev shows the bigger models follow the teacher's distribution more closely.
+
+## BERT-tiny, 4.4M parameters (2026-09-25)
+
+`google/bert_uncased_L-2_H-128_A-2` (2 layers, width 128; Google, 2020), same
+script, labels, split and test.
+
+| setting | accuracy | top-3 | agrees w/ Jev | KL to Jev | ECE | 80% / 50% most conf. | labels→saved model | rows/s (model only) | one row p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| lr 3e-4, 10 passes | 71.5% | 89.5% | 83.5% | 0.416 | 0.102 | 81.9% / 93% | 31 s | 72,899 | 1.5 ms |
+| **lr 1e-3, 30 passes** | **75.0%** | **93.0%** | **89.0%** | **0.248** | 0.123 | 87.5% / 96% | 84 s | **81,757** | 1.3 ms |
+| Ettin-17M (above) | 77.5% | 92.5% | 92.0% | 0.146 | 0.088 | — / 96% | 46 s | 42,664 | 5.3 ms |
+
+Validation KL flattens at ~0.27 from pass ~17 on (lr 1e-3): the model is at
+its capacity, not under-trained. Peak training memory 0.1 GB. At these speeds
+single-thread tokenization (~21,000 rows/s) is the bottleneck, so real
+end-to-end throughput needs tokenization spread over several cores.
