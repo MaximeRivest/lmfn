@@ -198,3 +198,20 @@ formatting/prose tokens ("lost") or top-20 truncation. Top-3 is capped by the
 top-20 alternatives seen along one path, so tails beyond them are zero.
 DeepSeek V4.1 Flash (earlier hard labels) scored 82.9% on the 175 questions it
 answered; Kimi answered all 200.
+
+## Claude Opus 5.5, hard labels (2026-09-25)
+
+`or_hard_labels.py anthropic/claude-opus-5.5 low`: same instruction and 200
+test questions, answer constrained to the 77 intents by a JSON-schema enum.
+Reasoning cannot be disabled on OpenRouter for this model ("mandatory");
+at effort "low" it used 2 reasoning tokens per question on average.
+
+| | accuracy | agrees w/ Jev | median latency | cost per 1,000 rows |
+|---|---|---|---|---|
+| **Claude Opus 5.5 (low)** | **92.0%** | 84.0% | 2.4 s | $8.12 |
+| Kimi K3 (logprobs run) | 82.0% | 87.5% | 0.48 s | $1.54 |
+| Jev | 78.5% | — | 0.12 s | $0.04 |
+
+200/200 valid answers. Standard error near 92% is ±1.9 points, so the gap
+to Kimi (10 points) is real. banking77 is public (2020), so part of this
+may be memorized test data; a fresh held-out set would settle it.
