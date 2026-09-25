@@ -465,3 +465,41 @@ refused every request. Kimi K3 does not continue a content prefill (above),
 so there the planted text is read as context rather than continued. Not
 dependable for production through OpenRouter; open weights served locally
 (vLLM, own chat template) give full control over the thinking.
+
+## Dataclass + enum prefill as the confidence frame (2026-09-25)
+
+`or_dataclass_logprobs.py`: the prompt declares `class Intent(Enum)` (77
+members) and `@dataclass class Classification: intent: Intent`; the message
+is `message = '…'`; the assistant is prefilled with
+`result = Classification(intent=Intent.` and stops at ")", so the model
+writes only the member name, and the 77-way distribution is rebuilt from the
+top-20 logprobs of those tokens. Baseline = the plain prompt, same model and
+same pinned provider, same 200 questions, distillation flag on.
+
+Routes giving both prefill and sane logprobs: Kimi K3 (Parasail, Makora,
+Morph, Phala, Sail Research), Kimi K2.6 (CoreWeave, Inceptron, Parasail),
+DeepSeek V4 Pro 0813 (Parasail, Cloudflare), DeepSeek V4 Flash 0731
+(Cloudflare); none for Nemotron. DeepSeek's own API breaks in this frame
+("???" answers) and its plain-mode logprobs are uninformative (confidence
+0.995 on average, AUROC 0.51).
+
+| model @ provider | frame | accuracy | AUROC | ECE | acc. top 80% / 50% | keep at 90% | keep at 95% | $ / 1,000 |
+|---|---|---|---|---|---|---|---|---|
+| Kimi K3 @ Parasail | dataclass | 84.0% | 0.834 | 0.095 | 92.5% / 97% | 85% | 74% | 1.30 |
+| | plain | 81.5% | 0.849 | 0.099 | 93.1% / 95% | 86% | 66.5% | 1.54 |
+| Kimi K2.6 @ CoreWeave | dataclass | 80.0% | **0.852** | 0.142 | 90.6% / 94% | 81.5% | 42% | 0.47 |
+| | plain | 81.5% | 0.797 | 0.130 | 89.4% / 95% | 78.5% | 56.5% | 0.12 |
+| DeepSeek V4 Pro 0813 @ Parasail | dataclass | 76.0% | 0.780 | 0.176 | 83.8% / 89% | 58% | 31% | 0.27 |
+| | plain | 78.0% | 0.760 | 0.172 | 83.1% / 92% | 63% | 34.5% | 0.38 |
+| DeepSeek V4 Flash 0731 @ Cloudflare | dataclass | 70.0% | 0.755 | 0.196 | 77.5% / 85% | 33.5% | 11% | 0.08 |
+| | plain | 71.5% | 0.767 | 0.213 | 78.1% / 89% | 57.5% | 14% | 0.12 |
+
+Paired differences (dataclass − plain, 95% bootstrap): accuracy Kimi K3
++2.5 [0.0, +5.5], K2.6 −1.5 [−4.5, +1.5], V4 Pro −2.0 [−6.5, +2.5], V4 Flash
+−1.5 [−6.5, +3.5]; AUROC K3 −0.015 [−0.08, +0.05], K2.6 +0.055 [+0.005,
++0.11], V4 Pro +0.02 [−0.06, +0.09], V4 Flash −0.01 [−0.09, +0.05].
+The frame's confidence tracks correctness (AUROC 0.76-0.85) about as well as
+the plain frame's; only K2.6's AUROC improves beyond noise. Its practical
+gains: the output is exactly one member name (no parsing) and it opens
+prefill on routes where the counting-test prefill failed (Kimi K3). The code
+prompt is longer (~1,300 tokens), which raises cost on cheap models.
