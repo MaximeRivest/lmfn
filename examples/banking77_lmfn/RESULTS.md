@@ -437,3 +437,31 @@ not only the model; per provider for the models that matter:
 | Mistral (own API) | yes, the prefill is echoed back; Mistral Small 4 untestable (rate-limited) |
 
 Pin a working provider with provider.order + allow_fallbacks=false.
+
+## Reasoning prefill among distillable models (2026-09-25)
+
+Test: a planted thought ("the secret code is ZEBRA-42"), asked "what is the
+secret code? … else UNKNOWN". Without the prefill every model answers
+UNKNOWN. Three ways to plant it: A = OpenRouter `reasoning` field on a final
+assistant message; B = "<think>\n…" as the assistant content prefill; C = the
+reasoning field plus a content prefill "The code is". Pinned providers where
+content prefill worked, reasoning effort low.
+
+One try each over 12 model/provider pairs: only 5 combinations used the
+thought at all. Repeated 5 times:
+
+| model @ provider | method | used the planted thought |
+|---|---|---|
+| Kimi K3 @ Parasail | B (<think> in content) | 4/5 |
+| Nemotron 3 Ultra @ BaseTen | C (field + content prefill) | 4/5 |
+| Kimi K3 @ Parasail | A (field) | 1/5 |
+| DeepSeek V4 Flash 0731 @ DeepInfra | A | 2/5, output corrupted (stray tokens) |
+| DeepSeek V4 Flash 0731 @ Fireworks | B | 0/5 (empty answers) |
+
+Never used: Nemotron 3 Ultra @ DeepInfra, DeepSeek V4 Pro 0813 (DeepSeek,
+DeepInfra), DeepSeek V4.1 Flash @ DeepSeek (field refused), Kimi K2.6
+(StreamLake, Baidu), Qwen3.8 2.4T @ Together; Nemotron 3 Super @ DeepInfra
+refused every request. Kimi K3 does not continue a content prefill (above),
+so there the planted text is read as context rather than continued. Not
+dependable for production through OpenRouter; open weights served locally
+(vLLM, own chat template) give full control over the thinking.
