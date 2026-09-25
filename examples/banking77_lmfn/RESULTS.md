@@ -100,3 +100,37 @@ Wall time, measured (model already downloaded, Python env installed):
 Peak GPU memory 15.6 / 16.8 GB. Serving speed not measured: same backbone and
 prompt as the earlier head (708 rows/s per 3090 in vLLM), but the saved
 `model.pt` still has to be exported in vLLM's classify format.
+
+## ModernBERT students from the same Jev distributions (2026-09-25)
+
+`modernbert_distill.py`: ModernBERT-base (150M) and -large (396M), whole model
+trained, 77-way classification head, input = the message alone. Same Jev
+labels, same 9,493 train / 500 validation rows, same KL loss and the same 200
+test questions as the Qwen3.5-0.8B full distillation above. AdamW, lr 5e-5
+(base) / 3e-5 (large), batch 32, cosine, flash-attention 2, bf16 autocast.
+One RTX 3090 each.
+
+| student | params | passes | accuracy | top-3 | agrees w/ Jev | KL to Jev (test) | ECE | 80% most conf. | 50% | labels→saved model |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-0.8B, full (above) | 752M | 3 | 80.0% | 94.5% | 92.5% | 0.081 | 0.102 | 90.0% | 96% | 324 s |
+| **ModernBERT-base** | 150M | 3 | 79.0% | 93.5% | 92.5% | 0.123 | **0.076** | 88.7% | 97% | **81 s** |
+| ModernBERT-base | 150M | 6 | 78.5% | 93.5% | 92.0% | 0.095 | 0.105 | 88.7% | 97% | 159 s |
+| ModernBERT-large | 396M | 3 | 77.5% | 94.0% | 92.0% | 0.090 | 0.120 | 88.7% | 97% | 155 s |
+| ModernBERT-large | 396M | 6 | 78.5% | 93.5% | **95.5%** | **0.066** | 0.098 | 89.4% | 96% | 308 s |
+
+(labels→saved model excludes the 16 s of Jev labelling, shared by all.)
+Validation KL flattens between passes 5 and 6; more passes bring the student
+closer to Jev without raising accuracy against human labels. All accuracies
+are within noise of each other on 200 questions (±2.8 points).
+
+Serving, plain PyTorch bf16, one 3090, 19,986 real messages sorted by length:
+
+| | rows/s | 100M rows, one GPU | one row, p50 |
+|---|---|---|---|
+| Qwen3.5-0.8B head, **vLLM** classify (earlier) | 708 | 39 h | 28 ms (incl. HTTP) |
+| **ModernBERT-base**, plain PyTorch | **6,508** | **4.3 h** | 13.7 ms (no HTTP) |
+| ModernBERT-large, plain PyTorch | 3,031 | 9.2 h | 16.8 ms (no HTTP) |
+
+The comparison favours Qwen's serving (optimized vLLM vs a plain PyTorch
+loop); the latencies are not like for like (one includes an HTTP round trip).
+Peak training memory: 4.2 GB (base), 10.3 GB (large), 16.8 GB (Qwen).
