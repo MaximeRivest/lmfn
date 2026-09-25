@@ -13,7 +13,7 @@ validation rows against their human labels (the standard fix for an
 overconfident classifier, applied the same way to both).
 
     python soft_vs_hard.py MODEL_ID EPOCHS LR TARGET SEED ROWS
-      TARGET = soft | hard | human     ROWS = all | sub1894
+      TARGET = soft | hard | human | synth | human_synth     ROWS = all | sub1894 | N
 """
 
 import json
@@ -44,6 +44,11 @@ random.Random(SPLIT_SEED).shuffle(pool)               # the split never changes 
 val = pool[:VAL_ROWS]
 val_texts = {r["text"] for r in val}
 train = [r for r in rows if r["text"] in subset] if ROWS == "sub1894" else [r for r in rows if r["text"] not in val_texts]
+SYNTH = {}
+if TARGET in ("synth", "human_synth"):               # our distillable pipeline's labels (no teacher we may not train on)
+    SYNTH = {json.loads(l)["text"]: json.loads(l)["probs"] for l in open(
+        "/home/maxime/Projects/primeintellect/data/pipeline/b77_2000.jsonl")}
+    train = [r for r in train if r["text"] in SYNTH]
 if ROWS.isdigit():                                   # learning curve: random N rows, more passes when small
     random.Random(SEED).shuffle(train)
     train = train[:int(ROWS)]
@@ -58,7 +63,10 @@ def jev(rs):
 train_p = jev(train)
 if TARGET == "hard":
     train_p = F.one_hot(train_p.argmax(1), len(LABELS)).float()
-elif TARGET == "human":                        # no teacher: the dataset's own labels
+elif TARGET == "synth":
+    train_p = torch.tensor([SYNTH[r["text"]] for r in train], dtype=torch.float32)
+    train_p = train_p / train_p.sum(1, keepdim=True)
+elif TARGET in ("human", "human_synth"):                        # no teacher: the dataset's own labels
     train_p = F.one_hot(torch.tensor([LABELS.index(r["label"]) for r in train]), len(LABELS)).float()
 val_human = torch.tensor([LABELS.index(r["label"]) for r in val])
 test_jev = jev(test)
@@ -69,8 +77,16 @@ random.seed(SEED)
 tok = AutoTokenizer.from_pretrained(MODEL)
 ids = lambda rs: [tok(r["text"], truncation=True, max_length=MAXLEN)["input_ids"] for r in rs]
 train_ids, val_ids, test_ids = ids(train), ids(val), ids(test)
+ATTN = "sdpa" if "Qwen" in MODEL else "flash_attention_2"
+from transformers import AutoConfig
+cfg = AutoConfig.from_pretrained(MODEL, num_labels=len(LABELS))
+if hasattr(cfg, "text_config"):                     # Qwen3.5 nests its text settings
+    cfg = cfg.text_config; cfg.num_labels = len(LABELS)
 model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL, num_labels=len(LABELS), attn_implementation="flash_attention_2", dtype=torch.float32).to(DEVICE)
+    MODEL, config=cfg, attn_implementation=ATTN, dtype=torch.float32).to(DEVICE)
+assert model.config.num_labels == len(LABELS)
+if model.config.pad_token_id is None:
+    model.config.pad_token_id = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
 
 
 def batches(xs, shuffle, bs=BATCH):
