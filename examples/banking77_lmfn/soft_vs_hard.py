@@ -44,6 +44,10 @@ random.Random(SPLIT_SEED).shuffle(pool)               # the split never changes 
 val = pool[:VAL_ROWS]
 val_texts = {r["text"] for r in val}
 train = [r for r in rows if r["text"] in subset] if ROWS == "sub1894" else [r for r in rows if r["text"] not in val_texts]
+if ROWS.isdigit():                                   # learning curve: random N rows, more passes when small
+    random.Random(SEED).shuffle(train)
+    train = train[:int(ROWS)]
+    EPOCHS = min(60, max(EPOCHS, round(EPOCHS * 9493 / len(train))))
 
 
 def jev(rs):

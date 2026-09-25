@@ -565,3 +565,21 @@ fitted on the same 200 questions, so these are optimistic.
 | Kimi K3 (dataclass) alone | 74% | 26% | 1.30 |
 | Qwen3.8 27B → Kimi K2.6 → Kimi K3 | 70.5% | 29.5% | 0.68 |
 | **Qwen3.8 27B → Qwen3.5 397B → Kimi K3** | **75%** | **25%** | **0.91** |
+
+## Learning curve, Ettin-17M on human labels (2026-09-25)
+
+`soft_vs_hard.py jhu-clsp/ettin-encoder-17m 6 1e-4 human SEED N`: random N
+training rows, passes scaled up for small N (cap 60), full 3,076-question
+test set, 3 seeds.
+
+| rows (≈ per class) | accuracy | top-3 | training |
+|---|---|---|---|
+| 100 (1.3) | 14.6 ±2.4 | 24.1 | 7 s |
+| 250 (3) | 27.1 ±2.5 | 40.0 | 12 s |
+| 500 (6.5) | 44.7 ±2.6 | 61.5 | 23 s |
+| 1,000 (13) | 66.7 ±1.4 | 82.2 | 44 s |
+| 2,000 (26) | 81.0 ±0.1 | 91.3 | 43 s |
+| 4,000 (52) | 87.2 ±0.1 | 95.0 | 42 s |
+| 9,493 (123) | 91.5 ±0.2 | 97.1 | 42 s |
+
+Not saturated at 9,493: +4.3 points from the last doubling.
