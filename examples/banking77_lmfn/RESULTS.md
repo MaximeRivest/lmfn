@@ -367,3 +367,49 @@ reported no reasoning on any row and left 19 of 200 unanswered (77.3% on the
 (120-590 tokens). Thinking lifts the weaker models to the level of the
 strongest, not above: the ceiling stays near 83-85%, against Opus 92% and
 human-label students 91-93%. Run cost ≈ $2.20.
+
+## Escalating when unsure: logprobs vs agreement (2026-09-25)
+
+Logprobs through OpenRouter with the distillation flag on (probe of every
+allowed model that lists them): most DeepSeek, Kimi K2.x/K3, Nemotron,
+Llama and open Qwen models return 20 alternatives; Alibaba-hosted Qwen
+returns 5; Qwen3.8 2.4T / Max / Flash, Kimi K2.7 Code and several "thinking"
+models return none. Some provider routes return impossible data (an
+"alternative" at probability 1.0: DeepSeek V4 Flash via Parasail, DeepSeek
+V3-0324 via GMICloud, Qwen3 Coder via Google) and must be avoided.
+
+`or_logprob_targets.py MODEL any 20 200 off|none`: plain-text answer (no
+enum), 77-way distribution rebuilt from the top-20 alternatives; confidence
+= its top probability. "Keep at 90%" = the largest share of rows, taken
+most-confident first, whose accuracy stays at or above 90%; the rest escalate.
+
+| model | accuracy | AUROC (conf. → right) | acc. of top 80% / 50% | keep at 90% | keep at 95% | $ / 1,000 |
+|---|---|---|---|---|---|---|
+| **Kimi K3** | 81.5% | **0.86** | **92.5% / 95%** | **85.5%** | **70%** | 1.54 |
+| **Kimi K2.6** | 81.5% | 0.80 | 90% / 95% | 80% | 54.5% | **0.12** |
+| DeepSeek V4.1 Flash | 76.0% | 0.81 | 86.3% / 92% | 73% | 11.5% | **0.05** |
+| Nemotron 3 Super | 73.5% | 0.83 | 82.5% / 93% | 62% | 41.5% | 0.04 |
+| DeepSeek V4 Pro 0813 | 71.0% | 0.84 | 82.5% / 91% | 52.5% | 40.5% | 0.35 |
+| Llama 4 Maverick | 73.0% | 0.80 | 82.5% / 91% | 52.5% | 11.5% | 0.09 |
+| Qwen3.8 27B | 62.5% | 0.87 | 75% / 87% | 45.5% | 30% | 0.06 |
+| Qwen3.5 397B | 65.5% | 0.83 | 73.8% / 94% | 56% | 37% | 0.11 |
+| DeepSeek V4 Flash 0731 | 67.5% | 0.77 | 75.6% / 87% | 20% | 10.5% | 0.05 |
+| Nemotron 3.5 Lightning | 64.5% | 0.78 | 72.5% / 83% | 37% | 30.5% | 0.03 |
+
+Without the enum constraint several models lose accuracy (DeepSeek V4 Pro
+80.5 → 71.0, Qwen3.8 27B 77.0 → 62.5): logprobs and a constrained answer do
+not come together here. Kimi K2.6 and K3 keep theirs.
+
+Agreement instead (enum answers from the earlier runs, any model):
+
+| pair / trio | share where they agree | accuracy there | $ / 1,000 |
+|---|---|---|---|
+| DeepSeek V4 Flash 0731 + Qwen3.8 Flash | 84.5% | 86.4% | 0.06 |
+| DeepSeek V4.1 Flash + Qwen3.8 Flash | 84.0% | 86.3% | 0.09 |
+| Qwen3.8 Flash + Nemotron 3 Ultra | 88.5% | 86.4% | 0.14 |
+| DeepSeek V4.1 Flash + Qwen3.8 Flash + Nemotron 3 Ultra | 80.5% | 88.2% | 0.20 |
+| all six (above) | 77% | 92.2% | 4.65 |
+
+At the same share kept (~80-85%), one Kimi model's logprobs give 90-92%
+accuracy on the kept rows; two cheap models agreeing give ~86%. Logprobs also
+let the threshold be moved; agreement gives one fixed split.

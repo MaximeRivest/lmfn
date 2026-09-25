@@ -9,7 +9,11 @@ mass goes to the answered intent. Mass on alternatives consistent with several
 intents is split evenly among them ("shared"); mass consistent with none
 (formatting, prose) is "lost". Coverage = assigned / total, reported per row.
 
-    python or_logprob_targets.py MODEL PROVIDER TOP_K [N]
+    python or_logprob_targets.py MODEL PROVIDER|any TOP_K [N] [off|none]
+
+Every request sets provider.enforce_distillable_text (only models whose authors
+allow distillation). The last argument: "off" sends reasoning.enabled=false,
+"none" sends no reasoning setting (models without one).
 
 Writes outputs/or-logprobs/<model>__<provider>.jsonl and prints a summary
 against the human labels and Jev, on the same 200 test questions.
@@ -79,8 +83,10 @@ async def main(model, provider, top_k, n):
         async def one(k):
             body = {"model": model, "max_tokens": 30, "temperature": 0, "logprobs": True, "top_logprobs": top_k,
                     "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": rows[k]["text"]}],
-                    "reasoning": {"enabled": False} if "kimi" in model else {"effort": "minimal"},
-                    "provider": {"order": [provider], "allow_fallbacks": False, "require_parameters": True}}
+                    "provider": {"enforce_distillable_text": True, "require_parameters": True,
+                                 **({} if provider == "any" else {"order": [provider], "allow_fallbacks": False})}}
+            if REASONING == "off":
+                body["reasoning"] = {"enabled": False}
             async with sem:
                 for attempt in range(5):
                     t0 = time.time()
@@ -89,7 +95,7 @@ async def main(model, provider, top_k, n):
                         j = r.json(); ch = j["choices"][0]
                         lp = (ch.get("logprobs") or {}).get("content") or []
                         dist, st = rebuild(lp)
-                        out[k] = {"text": rows[k]["text"], "label": rows[k]["label"], "answer": ch["message"].get("content"),
+                        out[k] = {"provider": j.get("provider"), "text": rows[k]["text"], "label": rows[k]["label"], "answer": ch["message"].get("content"),
                                   "dist": dist, **st, "secs": time.time() - t0, "cost": j["usage"].get("cost"),
                                   "reasoning_tokens": (j["usage"].get("completion_tokens_details") or {}).get("reasoning_tokens"),
                                   "raw": lp}
@@ -101,7 +107,7 @@ async def main(model, provider, top_k, n):
         wall = time.time() - t0
     os.makedirs(OUT, exist_ok=True)
     done = [r for r in out if r]
-    with open(f"{OUT}/{model.replace('/', '_')}__{provider}.jsonl", "w") as f:
+    with open(f"{OUT}/{model.replace('/', '_')}__{provider}__distillable.jsonl", "w") as f:
         for r in done:
             f.write(json.dumps(r) + "\n")
 
@@ -125,11 +131,25 @@ async def main(model, provider, top_k, n):
         bins[min(9, int(c_ * 10))].append((c_, ok))
     ece = sum(len(b) / n_ * abs(sum(c for c, _ in b) / len(b) - sum(o for _, o in b) / len(b)) for b in bins if b)
     spread = sum(1 for c_, _ in confs if c_ < 0.95) / n_
+    ranked = sorted(confs, key=lambda x: -x[0])
+    keep = {f"acc_top{int(f*100)}": round(sum(o for _, o in ranked[:int(f * n_)]) / int(f * n_), 3) for f in (0.8, 0.5)}
+    def kept_at(target):                      # largest share kept with accuracy >= target
+        best, right = 0.0, 0
+        for i, (_, o) in enumerate(ranked, 1):
+            right += o
+            if right / i >= target:
+                best = i / n_
+        return round(best, 3)
+    pos = [c for c, o in confs if o]; neg = [c for c, o in confs if not o]
+    auroc = sum((a > b) + 0.5 * (a == b) for a in pos for b in neg) / max(1, len(pos) * len(neg))
     print(json.dumps({"model": model, "provider": provider, "top_k": top_k, "answered": f"{n_}/{len(rows)}",
                       "accuracy_vs_human": round(acc / n_, 3), "top3": round(top3 / n_, 3),
                       "agrees_with_jev_pick": round(agree / n_, 3), "kl_jev_to_it": round(kl / n_, 3),
                       "mean_confidence": round(sum(c for c, _ in confs) / n_, 3), "ece": round(ece, 3),
                       "rows_with_real_spread(<0.95)": round(spread, 3),
+                      "auroc_conf_vs_correct": round(auroc, 3), **keep,
+                      "share_kept_at_90pct_acc": kept_at(0.90), "share_kept_at_95pct_acc": kept_at(0.95),
+                      "providers": sorted({r["provider"] for r in done if r.get("provider")}),
                       "mean_coverage": round(sum(r["coverage"] for r in done) / n_, 4),
                       "min_coverage": round(min(r["coverage"] for r in done), 3),
                       "mean_shared_mass": round(sum(r["shared"] for r in done) / n_, 4),
@@ -137,6 +157,8 @@ async def main(model, provider, top_k, n):
                       "median_secs": round(sorted(r["secs"] for r in done)[n_ // 2], 2), "wall_s": round(wall, 1),
                       "cost_usd_200": round(sum(r["cost"] or 0 for r in done), 4)}, indent=1))
 
+
+REASONING = sys.argv[5] if len(sys.argv) > 5 else "off"
 
 if __name__ == "__main__":
     asyncio.run(main(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]) if len(sys.argv) > 4 else 200))
