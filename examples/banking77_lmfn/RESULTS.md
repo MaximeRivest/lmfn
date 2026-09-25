@@ -550,3 +550,18 @@ Rust + Burn 0.21 on Vulkan (native binary over adb) was tried first:
 autotuned matmul hung on this driver, and without autotune it ran at
 3-28 GFLOP/s with wrong results for small shapes, so it was dropped.
 jax-js on the same GPU: 28-71 GFLOP/s, correct.
+
+## Cascades to 95% on the auto-answered messages (2026-09-25)
+
+Simulated from the existing 200-question runs (no new calls): each tier keeps
+the rows it is most confident about while those stay >= 95% right, the rest
+go up; what is left after the last tier goes to a person. Thresholds are
+fitted on the same 200 questions, so these are optimistic.
+
+| setup | answered automatically at >= 95% | to a person | $ / 1,000 |
+|---|---|---|---|
+| Nemotron 3 Super alone | 41.5% | 58.5% | 0.04 |
+| Kimi K2.6 alone | 56.5% | 43.5% | 0.12 |
+| Kimi K3 (dataclass) alone | 74% | 26% | 1.30 |
+| Qwen3.8 27B → Kimi K2.6 → Kimi K3 | 70.5% | 29.5% | 0.68 |
+| **Qwen3.8 27B → Qwen3.5 397B → Kimi K3** | **75%** | **25%** | **0.91** |
