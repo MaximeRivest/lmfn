@@ -14,7 +14,7 @@ Speed: batch jobs on local RTX 3090s, vLLM 0.29.
 | student, short prompt (45 tokens), generating, 1 GPU | 71.5% | | 583 | 48 h |
 | **student + 77-way classifier head, 1 GPU** | **80.5%** | **91%** | **708** | **39 h** |
 | **same, 2 GPUs (one server each)** | 80.5% | 91% | **1,411** | **20 h** |
-| TypeSafe Jev (`jev-latest` = 1.13), zero-shot, one 77-key choice | 78.5% (80.0% on the 175 DeepSeek answered) | 88% | 20 (rate limit, 1,200 req/min) | 58 days / $431 |
+| TypeSafe Jev (`jev-latest` = 1.13), zero-shot, one 77-key choice | 78.5% (80.0% on the 175 DeepSeek answered) | 88% | **685** (measured, 0 errors) | **~41 h / $431** |
 
 Classifier head: the student's 248k-word output layer replaced by a 77-way
 linear layer on the last prompt token (initialized from the student's own
@@ -46,6 +46,16 @@ median latency 0.12 s. Accuracy 78.5%, top-3 91%; most confident 80% of rows
 (`card_arrival` 0.78 / `card_delivery_estimate` 0.19).
 
 Cost: ~1,026 input tokens per row at $0.042 per million (output free) =
-$4.3 per million rows. Throughput is bounded by the account rate limit, 1,200
-requests per minute = 20 rows/s (a 200-row burst ran at 59 rows/s): 100M rows
-would take about 58 days on one key. Predictions: `jev_test200_predictions.json`.
+$4.3 per million rows.
+
+Throughput, measured (the documented 1,200 requests/minute is not what the
+key sees): 10,000 requests at 128 in flight ran at 685 req/s with no error;
+at 256 in flight about half returned HTTP 429. So ~685 rows/s per key,
+100M rows in ~41 h. Predictions: `jev_test200_predictions.json`.
+
+## Latency (one row, including HTTP)
+
+| | one request at a time | under load |
+|---|---|---|
+| Jev (API over the internet) | p50 127 ms, p90 164 ms | p50 130 ms, p99 355 ms at 685 rows/s |
+| student + head (vLLM on a local 3090) | p50 28 ms, p90 29 ms | p50 111 ms, p99 271 ms at 551 rows/s (one row per request) |
