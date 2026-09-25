@@ -59,3 +59,44 @@ at 256 in flight about half returned HTTP 429. So ~685 rows/s per key,
 |---|---|---|
 | Jev (API over the internet) | p50 127 ms, p90 164 ms | p50 130 ms, p99 355 ms at 685 rows/s |
 | student + head (vLLM on a local 3090) | p50 28 ms, p90 29 ms | p50 111 ms, p99 271 ms at 551 rows/s (one row per request) |
+
+## Full distillation from Jev's distributions (2026-09-25)
+
+Base Qwen3.5-0.8B (original weights, not the DeepSeek-distilled student), the
+248k-word output layer dropped, a 77-way head on the last prompt token
+(initialized from the base model's rows for each intent's first token).
+Every weight trained (752M parameters, no freezing, no LoRA). Loss:
+KL(Jev || student) on Jev's full 77-way distribution (`jev_label.py`,
+`full_distill.py`). AdamW, lr 3e-5 body / 3e-4 head, batch 32, 3 epochs,
+cosine; one RTX 3090 each; bf16 autocast over fp32 weights.
+
+Teacher labels: Jev on all 9,993 banking77 train questions in **16.1 s**
+(621 rows/s, 128 in flight, 0 errors, 0 retries), ~$0.43. Jev's pick matches
+the human label on 76.8% of them.
+
+| student | train rows | accuracy | top-3 | agrees w/ Jev | ECE | mean conf. | 80% most confident | 50% |
+|---|---|---|---|---|---|---|---|---|
+| Jev itself (teacher), same 200 | — | 78.5% | 91% | — | 0.105 | 0.89 | 90.6% | 95% |
+| DeepSeek student + frozen-body head (earlier) | 1,894 | 80.5% | 92% | — | 0.15 | 0.95 | 86.9% | 92% |
+| full distill from Jev | 1,894 (DeepSeek's texts) | 77.0% | 91% | 90.5% | **0.061** | 0.83 | 88.1% | 95% |
+| **full distill from Jev** | **9,493** | **80.0%** | **94.5%** | **92.5%** | 0.102 | 0.87 | **90.0%** | **96%** |
+
+Held-out KL to Jev (500 train rows never trained on): 0.255 (1,894 rows),
+0.105 (9,493 rows). On 200 test questions one question is 0.5 point; the
+standard error of an accuracy near 80% is about 2.8 points, so 77-80.5% are
+not reliably different; top-3, KL and agreement move more clearly.
+
+Wall time, measured (model already downloaded, Python env installed):
+
+| phase | 1,894 rows | 9,493 rows |
+|---|---|---|
+| Jev labels (all 9,993 rows, once) | 16 s | 16 s |
+| tokenize + load model | 8 s | 9 s |
+| train, 3 epochs | 97 s (180 steps) | 312 s (891 steps) |
+| of which one-time GPU kernel compile, first epoch | ~38 s | ~36 s |
+| evaluate 200 + save bf16 weights | 3 s | 3 s |
+| **total, labels to saved model** | **~2 min** | **~5.7 min** |
+
+Peak GPU memory 15.6 / 16.8 GB. Serving speed not measured: same backbone and
+prompt as the earlier head (708 rows/s per 3090 in vLLM), but the saved
+`model.pt` still has to be exported in vLLM's classify format.
