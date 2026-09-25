@@ -31,7 +31,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 T_START = time.time()
 BASE = "Qwen/Qwen3.5-0.8B"
 JEV_TRAIN = "/home/maxime/Projects/primeintellect/data/banking77-jev/train.jsonl"
-SUBSET = "/tmp/b77_train.json"                 # "deepseek_subset": the 1,894 texts DeepSeek labelled
+SUBSET = "/home/maxime/Projects/primeintellect/data/banking77-jev/questions.json"  # labels, train rows, DeepSeek's 1,894 texts
 TEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jev_test200_predictions.json")
 SYSTEM = "Classify the bank customer's message by what they need.\nIntent: <intent>"
 DEVICE = "cuda:0"                              # pick the card with CUDA_VISIBLE_DEVICES
