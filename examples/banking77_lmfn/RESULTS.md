@@ -239,3 +239,25 @@ the distribution improves clearly and at every size: top-3 +1 to +4.5
 points, calibration error halved raw and still halved after temperature
 scaling, and the most-confident-half accuracy +3.5 to +4.8 points (the
 "send unsure rows to a bigger model" use). Training time identical.
+
+## No teacher: the dataset's own human labels (2026-09-25)
+
+`soft_vs_hard.py MODEL ... human`: same students, rows, split, settings and
+full 3,076-question test set as the soft/hard comparison; the target is the
+banking77 human label (one-hot). 3 seeds.
+
+| student / data | target | accuracy | top-3 | agrees w/ Jev | ECE raw | ECE calibrated | 50% most conf. | 80% most conf. | NLL (cal.) |
+|---|---|---|---|---|---|---|---|---|---|
+| ModernBERT-base / 9,493 | **human** | **93.2** ±0.3 | **98.0** | 79.7 | **0.017** | **0.011** | **99.5** | **98.9** | **0.26** |
+| | Jev soft | 78.8 | 91.7 | 91.6 | 0.067 | 0.016 | 96.3 | 87.8 | 0.80 |
+| Ettin-17M / 9,493 | **human** | **91.5** ±0.2 | **97.1** | 78.0 | 0.047 | **0.011** | **99.7** | **98.4** | **0.33** |
+| | Jev soft | 77.3 | 91.4 | 89.8 | 0.077 | 0.019 | 95.9 | 86.6 | 0.83 |
+| Ettin-17M / 1,894 | **human** | **76.0** ±1.1 | **89.3** | 66.9 | 0.092 | 0.020 | 96.2 | 86.3 | 0.92 |
+| | Jev soft | 67.5 | 84.8 | 76.2 | 0.060 | 0.022 | 89.3 | 76.5 | 1.24 |
+
+The test labels come from the same annotators and guidelines as the training
+labels, so a human-trained student also learns their conventions on
+ambiguous pairs (e.g. card_arrival vs card_delivery_estimate); teachers are
+scored against conventions they never saw. Accuracy against these labels
+therefore measures fit to this labelling scheme, not only understanding.
+For reference, Opus 5.5 scored 92.0% on the 200-question subset (±1.9).

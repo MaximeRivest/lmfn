@@ -13,7 +13,7 @@ validation rows against their human labels (the standard fix for an
 overconfident classifier, applied the same way to both).
 
     python soft_vs_hard.py MODEL_ID EPOCHS LR TARGET SEED ROWS
-      TARGET = soft | hard     ROWS = all | sub1894
+      TARGET = soft | hard | human     ROWS = all | sub1894
 """
 
 import json
@@ -54,6 +54,8 @@ def jev(rs):
 train_p = jev(train)
 if TARGET == "hard":
     train_p = F.one_hot(train_p.argmax(1), len(LABELS)).float()
+elif TARGET == "human":                        # no teacher: the dataset's own labels
+    train_p = F.one_hot(torch.tensor([LABELS.index(r["label"]) for r in train]), len(LABELS)).float()
 val_human = torch.tensor([LABELS.index(r["label"]) for r in val])
 test_jev = jev(test)
 test_gold = torch.tensor([LABELS.index(r["label"]) for r in test])
