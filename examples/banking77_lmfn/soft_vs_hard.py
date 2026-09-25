@@ -13,7 +13,9 @@ validation rows against their human labels (the standard fix for an
 overconfident classifier, applied the same way to both).
 
     python soft_vs_hard.py MODEL_ID EPOCHS LR TARGET SEED ROWS
-      TARGET = soft | hard | human | synth | human_synth     ROWS = all | sub1894 | N
+      TARGET = soft | hard | human | synth | human_synth | kimi     ROWS = all | sub1894 | N
+      kimi: one-hot on Kimi K3's answer (data/kimi/train_kimi.jsonl); the same random N rows as `human`
+      for the same SEED, minus the few rows Kimi gave no valid label for.
 """
 
 import json
@@ -53,6 +55,16 @@ if ROWS.isdigit():                                   # learning curve: random N 
     random.Random(SEED).shuffle(train)
     train = train[:int(ROWS)]
     EPOCHS = min(60, max(EPOCHS, round(EPOCHS * 9493 / len(train))))
+KIMI = {}
+if TARGET == "kimi":                                 # Kimi K3 labels: filter AFTER sampling so subsets pair with `human`
+    _text = {json.loads(l)["id"]: json.loads(l)["text"] for l in open("/home/maxime/Projects/primeintellect/data/kimi/train_items.jsonl")}
+    for l in open("/home/maxime/Projects/primeintellect/data/kimi/train_kimi.jsonl"):
+        r = json.loads(l)
+        if r.get("pred") in LABELS:
+            KIMI[_text[r["id"]]] = r["pred"]
+    n_before = len(train)
+    train = [r for r in train if r["text"] in KIMI]
+    print(f"kimi: {n_before - len(train)} of {n_before} sampled rows have no valid Kimi label, dropped", flush=True)
 
 
 def jev(rs):
@@ -66,6 +78,8 @@ if TARGET == "hard":
 elif TARGET == "synth":
     train_p = torch.tensor([SYNTH[r["text"]] for r in train], dtype=torch.float32)
     train_p = train_p / train_p.sum(1, keepdim=True)
+elif TARGET == "kimi":
+    train_p = F.one_hot(torch.tensor([LABELS.index(KIMI[r["text"]]) for r in train]), len(LABELS)).float()
 elif TARGET in ("human", "human_synth"):                        # no teacher: the dataset's own labels
     train_p = F.one_hot(torch.tensor([LABELS.index(r["label"]) for r in train]), len(LABELS)).float()
 val_human = torch.tensor([LABELS.index(r["label"]) for r in val])
