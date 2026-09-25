@@ -31,6 +31,22 @@ print(df.shape)
 df.sample(5, seed=1)
 ```
 
+```output
+(9993, 3)
+shape: (5, 3)
+┌──────┬─────────────────────────────────┬────────────────────────────────┐
+│ id   ┆ text                            ┆ label_text                     │
+│ ---  ┆ ---                             ┆ ---                            │
+│ u32  ┆ str                             ┆ str                            │
+╞══════╪═════════════════════════════════╪════════════════════════════════╡
+│ 8107 ┆ Card delivery services? Where?  ┆ order_physical_card            │
+│ 7463 ┆ So, I am in the middle of purc… ┆ failed_transfer                │
+│ 1000 ┆ What are the currency types th… ┆ fiat_currency_support          │
+│ 7456 ┆ What could possibly be the cau… ┆ failed_transfer                │
+│ 1845 ┆ How much does a transfer cost?  ┆ top_up_by_bank_transfer_charge │
+└──────┴─────────────────────────────────┴────────────────────────────────┘
+```
+
 ## 2. The task is one function
 
 The type is the whole specification: 77 allowed answers, nothing else.
