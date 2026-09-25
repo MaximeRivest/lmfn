@@ -134,3 +134,23 @@ Serving, plain PyTorch bf16, one 3090, 19,986 real messages sorted by length:
 The comparison favours Qwen's serving (optimized vLLM vs a plain PyTorch
 loop); the latencies are not like for like (one includes an HTTP round trip).
 Peak training memory: 4.2 GB (base), 10.3 GB (large), 16.8 GB (Qwen).
+
+## Tiny encoders: Ettin 17M / 32M / 68M (2026-09-25)
+
+`jhu-clsp/ettin-encoder-*` (ModernBERT architecture and recipe, small sizes),
+same script (`modernbert_distill.py <model id> 6`), lr 1e-4, 6 passes, same
+Jev labels, split and 200 test questions.
+
+| student | params | accuracy | top-3 | agrees w/ Jev | KL to Jev | ECE | 50% most conf. | labels→saved model | train memory | rows/s, one 3090 | 100M rows | one row p50 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ettin-17M | 17M | 77.5% | 92.5% | 92.0% | 0.146 | 0.088 | 96% | **46 s** | 0.5 GB | **42,664** | **0.7 h** | 5.3 ms |
+| Ettin-32M | 32M | 77.5% | 94.0% | 91.0% | 0.114 | 0.084 | 96% | 63 s | 0.9 GB | 25,955 | 1.1 h | 6.9 ms |
+| Ettin-68M | 68M | 78.5% | 93.0% | 93.0% | 0.104 | 0.094 | 96% | 113 s | 2.1 GB | 11,885 | 2.3 h | 12.3 ms |
+| ModernBERT-base (above) | 150M | 79.0% | 93.5% | 92.5% | 0.123 | 0.076 | 97% | 81 s (3 passes) | 4.2 GB | 6,508 | 4.3 h | 13.7 ms |
+| Qwen3.5-0.8B (above, vLLM) | 752M | 80.0% | 94.5% | 92.5% | 0.081 | 0.102 | 96% | 324 s | 16.8 GB | 708 | 39 h | 28 ms (HTTP) |
+
+rows/s is the model alone on pre-tokenized input (same harness for every
+encoder). One Python thread tokenizes ~22,000 rows/s, so at 17M the tokenizer,
+not the GPU, is the limit unless tokenization is parallelized across cores.
+Accuracy differences stay within the ±2.8-point noise of 200 questions; KL to
+Jev shows the bigger models follow the teacher's distribution more closely.

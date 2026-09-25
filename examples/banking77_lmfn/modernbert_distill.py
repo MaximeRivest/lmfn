@@ -6,7 +6,9 @@ the numbers compare directly: KL(Jev || student) on Jev's full distribution,
 is the customer message alone (an encoder needs no instruction). After
 training, throughput and one-row latency are measured in plain PyTorch.
 
-    python modernbert_distill.py base|large [EPOCHS]
+    python modernbert_distill.py base|large|HF_MODEL_ID [EPOCHS] [LR]
+
+Any ModernBERT-architecture encoder works, e.g. jhu-clsp/ettin-encoder-17m.
 """
 
 import json
@@ -24,12 +26,13 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 T_START = time.time()
 size = sys.argv[1]
 EPOCHS = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-BASE = f"answerdotai/ModernBERT-{size}"
+BASE = size if "/" in size else f"answerdotai/ModernBERT-{size}"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = "/home/maxime/Projects/primeintellect/data/banking77-jev"
 TEST = os.path.join(HERE, "jev_test200_predictions.json")
-BATCH, LR, WARMUP, MAXLEN, VAL_ROWS, SEED = 32, {"base": 5e-5, "large": 3e-5}[size], 0.05, 128, 500, 0
-OUT = f"/home/maxime/Projects/primeintellect/outputs/banking77-modernbert-{size}-e{EPOCHS}"
+BATCH, WARMUP, MAXLEN, VAL_ROWS, SEED = 32, 0.05, 128, 500, 0
+LR = float(sys.argv[3]) if len(sys.argv) > 3 else {"base": 5e-5, "large": 3e-5}.get(size, 1e-4)
+OUT = f"/home/maxime/Projects/primeintellect/outputs/banking77-{BASE.split('/')[-1].lower()}-e{EPOCHS}"
 DEVICE = "cuda:0"
 os.makedirs(OUT, exist_ok=True)
 torch.manual_seed(SEED)
@@ -160,7 +163,7 @@ def ece(probs, gold, bins=15):
 
 oc = conf.argsort(descending=True)
 results = {
-    "model": BASE, "attention": attn, "epochs": EPOCHS, "train_rows": len(train),
+    "model": BASE, "lr": LR, "attention": attn, "epochs": EPOCHS, "train_rows": len(train),
     "params_M": round(n_params / 1e6),
     "accuracy_vs_human": round(float((pred == test_gold).float().mean()), 3),
     "top3_vs_human": round(float((probs.topk(3, 1).indices == test_gold[:, None]).any(1).float().mean()), 3),
