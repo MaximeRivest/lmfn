@@ -28,12 +28,14 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import student_prompt
+from student_prompt import messages as student_messages
+
 T_START = time.time()
 BASE = "Qwen/Qwen3.5-0.8B"
 JEV_TRAIN = "/home/maxime/Projects/primeintellect/data/banking77-jev/train.jsonl"
 SUBSET = "/home/maxime/Projects/primeintellect/data/banking77-jev/questions.json"  # labels, train rows, DeepSeek's 1,894 texts
 TEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jev_test200_predictions.json")
-SYSTEM = "Classify the bank customer's message by what they need.\nIntent: <intent>"
 DEVICE = "cuda:0"                              # pick the card with CUDA_VISIBLE_DEVICES
 EPOCHS, BATCH, LR_BODY, LR_HEAD, WARMUP = 3, 32, 3e-5, 3e-4, 0.05
 VAL_ROWS, SEED = 500, 0
@@ -69,7 +71,7 @@ tok.padding_side = "left"                       # last position = the "Intent:" 
 
 
 def prompt(text):
-    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}]
+    msgs = student_messages(text)                  # the layout of student/adapter.json
     return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
                                    enable_thinking=False) + "Intent:"
 
@@ -203,7 +205,7 @@ tick("evaluate_200", t0)
 
 t0 = time.time()
 torch.save({"body": {k: v.to(torch.bfloat16) for k, v in body.state_dict().items()},
-            "head": head.state_dict(), "labels": LABELS, "system": SYSTEM, "base": BASE},
+            "head": head.state_dict(), "labels": LABELS, "adapter": json.load(open(student_prompt.ADAPTER)), "signature": json.load(open(student_prompt.SIGNATURE)), "base": BASE},
            f"{OUT}/model.pt")
 tick("save_bf16", t0)
 timings["total_wall"] = round(time.time() - T_START, 1)

@@ -25,12 +25,13 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from student_prompt import messages as student_messages
+
 LABELS = tuple(sorted(set(load_dataset("mteb/banking77", split="test")["label_text"])))   # as banking77_lmfn.program
 
 STUDENT = "/home/maxime/Projects/primeintellect/outputs/banking77-sft-0.8b-short/hf_step_150"
 DATA = "/home/maxime/Projects/primeintellect/data/banking77-teacher-short/train.parquet"
 OUT = "/home/maxime/Projects/primeintellect/outputs/banking77-head"
-SYSTEM = "Classify the bank customer's message by what they need.\nIntent: <intent>"
 DEVICE = "cuda:0"
 IDX = {label: i for i, label in enumerate(LABELS)}
 
@@ -39,7 +40,7 @@ tok.padding_side = "left"          # the last position is the "Intent:" token fo
 
 
 def prompt(text: str) -> str:
-    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}]
+    msgs = student_messages(text)               # the layout the student learned (student/adapter.json)
     return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
                                    enable_thinking=False) + "Intent:"
 

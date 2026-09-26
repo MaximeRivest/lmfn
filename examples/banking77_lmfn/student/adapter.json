@@ -1,0 +1,25 @@
+{
+  "name": "classify_short",
+  "versions": {
+    "kernel": "0.8.3",
+    "vocab": {}
+  },
+  "template": [
+    {
+      "role": "system",
+      "text": "{instruction}\nIntent: {answer}"
+    },
+    {
+      "role": "user",
+      "text": "{text}"
+    }
+  ],
+  "reader": {
+    "kind": "derived"
+  },
+  "formats": {
+    "enum": {
+      "describe": "<intent>"
+    }
+  }
+}

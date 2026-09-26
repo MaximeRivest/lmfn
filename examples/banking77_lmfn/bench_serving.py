@@ -25,6 +25,7 @@ from transformers import AutoTokenizer
 
 import lmfn
 from banking77_lmfn.program import ADAPTERS, LABELS, classify
+from student_prompt import messages as student_messages
 
 import os
 
@@ -42,9 +43,9 @@ def messages(text):
 
 
 def short_messages(text):
-    return [{"role": "system", "content": "Classify the bank customer's message by what they need.\n\n"
-                                          "Reply with one line:\nIntent: <intent>"},
-            {"role": "user", "content": text}]
+    # the short student's own layout (student/adapter.json); until 2026-09-26 this
+    # was a hand copy that had drifted ("Reply with one line:" the student never saw)
+    return student_messages(text)
 
 
 def raw_prompt(text, short=False):
