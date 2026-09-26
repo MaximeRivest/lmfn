@@ -117,8 +117,9 @@ res.measured_by    # {'answer': 'provider_classification'}: how
 
 `probabilities` is what the provider *measured* over a choice's declared
 answers (lm15 judgments), never a number the model wrote. Jev
-(`model="jev-latest"`) always measures them; lmfn gives it the JSON layout
-it needs. Elsewhere ask with the lm15 setting `probabilities="required"`
+(`model="jev-latest"`) always measures them. It takes no system prompt, so
+lmfn gives it its own layout (`lmfn.judgment_adapter`): the input alone as
+what Jev reads, the docstring as the question. Elsewhere ask with the lm15 setting `probabilities="required"`
 (or `"if_available"`) and a JSON layout (`adapter=lmfn.json_adapter()`);
 lm15 refuses before sending where the wire cannot measure.
 

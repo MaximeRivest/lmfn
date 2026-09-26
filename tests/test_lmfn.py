@@ -370,7 +370,11 @@ def test_jev_gets_the_json_layout_and_the_result_carries_probabilities():
     request = router.requests[0]
     assert request.config.response_format["schema"]["properties"]["answer"]["enum"] == \
         ["card_arrival", "exchange_rate"]
-    assert classify.plan().adapter.name == "lmfn_json"
+    assert classify.plan().adapter.name == "lmfn_judgment"
+    assert request.system is None                     # lm15 refuses a system prompt for Jev
+    assert [p.text for p in request.messages[0].parts] == ["Where is my card?"]   # the state
+    assert request.config.response_format["schema"]["properties"]["answer"]["description"] == \
+        "Classify the bank customer's message by what they need."             # the question
 
 
 def test_probabilities_can_be_asked_of_any_model_as_an_lm15_setting():

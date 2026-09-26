@@ -163,7 +163,7 @@ def default_adapter() -> lmcc.Adapter:
 def json_adapter(*, probabilities: str | None = None) -> lmcc.Adapter:
     """The reply is one JSON object the provider enforces (lmcc
     ``reader/json_object``): for models that declare
-    ``native_structured_output``, and the layout Jev needs. With
+    ``native_structured_output`` (Jev gets ``judgment_adapter``). With
     ``probabilities`` (``"if_available"`` or ``"required"``) the artifact
     itself asks for the distribution over each judgment's answers. A
     ``reasoning`` output is an ordinary member of the object here."""
@@ -183,6 +183,35 @@ def json_adapter(*, probabilities: str | None = None) -> lmcc.Adapter:
                  "use": _REGISTRY.transport("native_tools", {})},
                 {"else": _REGISTRY.transport("fenced_tools", {})}]),
         })
+
+
+def judgment_adapter(signature: lmcc.SignatureCore) -> lmcc.Adapter:
+    """The layout for a provider that answers only judgments (Jev): no system
+    prompt (lm15 refuses one there: the context is the state or the question,
+    lm15 changes/2026-09-19-jev-state.md), the input alone as the state — a
+    single input bare, several in tags — and the reply a JSON object. The
+    questions come from ``judgment_signature``."""
+    inputs = [f for f in signature.inputs if f.purpose == "plain"]
+    body = ("{" + inputs[0].name + "}" if len(inputs) == 1 else
+            "{% for f in inputs %}<{f.name}>\n{f.value}\n</{f.name}>\n{% endfor %}")
+    return lmcc.adapter(name="lmfn_judgment", messages=[lmcc.turns(), lmcc.user(body)],
+                        reader={"kind": "json_object"}, formats=DEFAULT_FORMATS)
+
+
+def judgment_signature(signature: lmcc.SignatureCore) -> lmcc.SignatureCore:
+    """Each output's question is its description (lm15 MAP-14 D4): a field's
+    own ``desc``, else the docstring — for one output the docstring itself,
+    for several the docstring followed by the field's name. Descriptions are
+    not part of a turn's fingerprint, so recorded turns stay valid."""
+    outputs = signature.outputs
+    doc = signature.instructions
+
+    def question(f):
+        if f.desc or not doc:
+            return f.desc
+        return doc if len(outputs) == 1 else f"{doc} ({f.name})"
+    return lmcc.SignatureCore(doc, [dataclasses.replace(f, desc=question(f))
+                                    if f.direction == "output" else f for f in signature.fields])
 
 
 # ------------------------------------------------------------------ signature
@@ -308,12 +337,14 @@ class Function:
             raise RuntimeError("no model: call lmfn.configure(model=...) or pass model= to @ai")
         return merged
 
-    def adapter_for(self, provider: str) -> lmcc.Adapter:
+    def layout_for(self, provider: str) -> tuple[lmcc.Adapter, lmcc.SignatureCore]:
         """The adapter given, else the default layout — or, for a provider
-        that answers only judgments (Jev), the JSON layout it needs."""
+        that answers only judgments (Jev), the judgment layout and questions."""
         if self.adapter is not None:
-            return self.adapter
-        return json_adapter() if provider in models.JUDGMENT_ONLY else default_adapter()
+            return self.adapter, self.signature
+        if provider in models.JUDGMENT_ONLY:
+            return judgment_adapter(self.signature), judgment_signature(self.signature)
+        return default_adapter(), self.signature
 
     def plan(self) -> lmcc.Plan:
         """The lmcc plan for the current model: bound once per model and capabilities."""
@@ -322,8 +353,8 @@ class Function:
         caps = {**models.capabilities(route.provider, route.model), **s.get("capabilities", {})}
         key = (s["model"], json.dumps(caps, sort_keys=True))
         if key not in self._plans:
-            self._plans[key] = self.adapter_for(route.provider).bind(
-                self.signature, caps, registry=_REGISTRY)
+            adapter, signature = self.layout_for(route.provider)
+            self._plans[key] = adapter.bind(signature, caps, registry=_REGISTRY)
         return self._plans[key]
 
     # -- inputs and turns
