@@ -78,9 +78,13 @@ r.sentiment, r.stars, r.would_return        # (Sentiment.mixed, 4, True)
 ```
 
 A dataclass return is several outputs; `lmcc.One[Review]` makes it one
-structured output instead. Everything lmcc checks, it checks here, and
-before any call: a type with no format refuses at the first call's bind,
-not at the provider.
+structured output instead. Lists, dicts and records travel as JSON unless
+an adapter says otherwise (the default layout binds lmcc's `json` format
+under `*`, which never re-spells a scalar). A type only your program knows
+is bound once with `lmcc.format(T, write=..., read=...)`, and lmfn sees it:
+it uses lmcc's default registry. Everything lmcc checks, it checks here,
+and before any call: a type with no format refuses at the first call's
+bind, not at the provider.
 
 ## 3. Thinking first, without changing what you get back
 
@@ -107,7 +111,16 @@ res.repairs        # what the reader repaired (lmcc §4a), [] when clean
 res.turn           # the lmcc.Turn: inputs, every model step and tool step, outputs
 res.response       # the last lm15 Response (usage, finish reason, provider data)
 res.usage          # summed over every model call of this turn
+res.probabilities  # {'answer': {'good': 0.93, 'bad': 0.07}} when the provider measured them
+res.measured_by    # {'answer': 'provider_classification'}: how
 ```
+
+`probabilities` is what the provider *measured* over a choice's declared
+answers (lm15 judgments), never a number the model wrote. Jev
+(`model="jev-latest"`) always measures them; lmfn gives it the JSON layout
+it needs. Elsewhere ask with the lm15 setting `probabilities="required"`
+(or `"if_available"`) and a JSON layout (`adapter=lmfn.json_adapter()`);
+lm15 refuses before sending where the wire cannot measure.
 
 `f(...)` is `f.call(...).value`. One method, not a magic keyword: a
 keyword like functai's `all=True` collides with an input named `all`.
@@ -134,7 +147,9 @@ def assistant(question: str) -> str:
 assistant("What's the weather in Montreal?")     # 'It is sunny and 22°C in Montreal.'
 ```
 
-Tools are plain functions (lm15's `derive_tool` makes their schema).
+Tools are plain functions: lmfn writes each one's schema from its type
+hints with lmcc (the same lowering as the function's own inputs), its
+docstring as the description; a parameter without a default is required.
 With tools, `call` runs the loop: render, call the model, and while the
 reply asks for tools, run them, record each result as a step of the same
 turn, call again. `max_steps` bounds it (default 8); reaching it raises

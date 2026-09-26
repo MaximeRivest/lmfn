@@ -10,8 +10,13 @@ Every guess here is overridable per function:
 
 from __future__ import annotations
 
-# providers whose API has native tool calling and stop sequences (lm15 providers)
+# providers whose API has native tool calling, stop sequences and an enforced
+# JSON schema (lm15 maps response_format for all four, MAP-8)
 NATIVE_PROVIDERS = {"openai", "anthropic", "gemini", "xai"}
+
+# providers that answer only judgments: typed questions with a probability for
+# every declared answer (lm15 MAP-14; TypeSafe's Jev), never free text
+JUDGMENT_ONLY = {"typesafe"}
 
 # model-name prefixes with an API-level thinking channel lm15 can request
 _REASONING_PREFIXES = {
@@ -24,9 +29,12 @@ _REASONING_PREFIXES = {
 
 def capabilities(provider: str, model: str) -> dict:
     """The capability facts lmfn declares for ``model`` served by ``provider``."""
+    if provider in JUDGMENT_ONLY:
+        return {"native_structured_output": True}
     caps = {"instruct": True}
     if provider in NATIVE_PROVIDERS:
         caps["native_function_calling"] = True
+        caps["native_structured_output"] = True
         # lm15's `openai` provider speaks the Responses API, which has no
         # `stop` (lm15 refuses it loudly; found live 2026-09-23)
         caps["stop_sequences"] = provider != "openai"

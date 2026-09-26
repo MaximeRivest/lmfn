@@ -4,7 +4,7 @@ rat:
   project: ..
   python:
     requires: ">=3.10"
-    dependencies: ["-e .", "-e ../lmcc/python", "lm15==1.0.0rc1", "polars"]
+    dependencies: ["-e .", "-e ../lmcc/python", "lm15==1.0.1", "polars"]
 ---
 
 # lmfn: functions whose body is a model
@@ -114,9 +114,7 @@ read_review("The carbonara was perfect but the service was painfully slow. "
 Review(sentiment=<Sentiment.mixed: 'mixed'>, stars=3, would_return=True, dish='carbonara')
 ```
 
-The types that work today: `str`, `int`, `float`, `bool`, `Enum`, `Literal[...]`, `Optional[...]` of those, and dataclasses made of them.
-
-Types that don't work yet are refused **before any call is made**, so a mistake never costs money. A list, for example:
+The types that work out of the box: `str`, `int`, `float`, `bool`, `Enum`, `Literal[...]`, `Optional[...]` of those, dataclasses, and lists and dicts of them. Lists, dicts and records travel as JSON, and the model is told the schema:
 
 ```python
 import lmcc
@@ -125,17 +123,55 @@ import lmcc
 def dishes(text: str) -> list[str]:
     """List every dish the review names."""
 
+print(dishes.render("Tacos, then churros.").system)   # render never calls the model
+```
+
+```output
+List every dish the review names.
+
+Reply in exactly this form:
+<answer>
+JSON matching this schema: {"type": "array", "items": {"type": "string"}}
+</answer>
+```
+
+A type only your program knows is refused **before any call is made**, so a mistake never costs money:
+
+```python
+class Menu:                       # a type only this program knows
+    def __init__(self, rows):
+        self.rows = rows
+
 try:
-    dishes.render("Tacos, then churros.")     # render never calls the model
+    @lmfn.ai
+    def cheapest(menu: Menu) -> str:
+        """Name the cheapest dish."""
 except lmcc.Refusal as err:
     print(err.code)
 ```
 
 ```output
-no-format
+unmapped-type
 ```
 
-(Lists, dicts and dataframes are the biggest gap today; see the end of this vignette.)
+Say once how it is written, and every function can take it:
+
+```python
+lmcc.format(Menu, write=lambda m: "\n".join(f"{dish}: ${price}" for dish, price in m.rows))
+
+@lmfn.ai
+def cheapest(menu: Menu) -> str:
+    """Name the cheapest dish."""
+
+print(cheapest.render(Menu([("tacos", 9), ("fries", 4)])).messages[-1].parts[0].text)
+```
+
+```output
+<menu>
+tacos: $9
+fries: $4
+</menu>
+```
 
 ## 3. Letting the model think first
 
@@ -435,8 +471,7 @@ A session is a list of turns plus a function, and everything else edits that lis
 
 It is honest to end with the edges:
 
-- **Only simple types.** No `list`, `dict` or dataframe as an input or output yet (section 2). To send a table, turn it into text first.
-- **`lmcc.One[...]` fails**, although the README shows it.
+- **Dataframes need one line first.** `lmcc.format(pl.DataFrame, ...)` says how a table is written (section 2); there is no built-in table layout for polars yet.
 - **Tool loops need `retries=1` in practice** with small models (section 7). It could become the default when tools are given.
 - **One call at a time.** Running a function over 10,000 rows means 10,000 calls one after another (about 1.8 s each on `gpt-4.1-mini`), with no parallelism, no cache and no cost estimate.
 - **No async** (`acall`), and **no streaming with tools**.

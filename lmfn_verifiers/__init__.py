@@ -43,7 +43,7 @@ from verifiers.v1.task import TaskData
 from verifiers.v1.trace import Trace
 
 import lmfn
-from lmfn.core import Function
+from lmfn.core import Function, default_adapter
 
 INFO_KEY = "lmfn"
 ENVELOPE = "lmfn_inputs"
@@ -118,7 +118,7 @@ def load_program(config: LmfnHarnessConfig) -> Function:
     fn = _load_object(config.program)
     if not isinstance(fn, Function):
         raise TypeError(f"{config.program!r} is not an @lmfn.ai function")
-    adapter = fn.adapter
+    adapter = fn.adapter or default_adapter()   # verifiers serves an OpenAI-style endpoint
     if config.adapter:
         spec = config.adapter
         if spec.endswith(".json"):

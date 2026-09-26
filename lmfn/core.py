@@ -26,7 +26,9 @@ from . import models
 CONFIG_FIELDS = frozenset(lm15.Config.__dataclass_fields__)
 OWN_SETTINGS = frozenset({"model", "capabilities", "router"})
 
-_REGISTRY = lmcc.Registry()
+# lmcc's default registry, so a type bound with ``lmcc.format(T, ...)`` is
+# seen here too; importing lmfn adds the standard vocabulary to it.
+_REGISTRY = lmcc.default_registry
 lmcc_std.install(_REGISTRY)
 
 # ---------------------------------------------------------------- settings
@@ -106,6 +108,12 @@ class CallResult:
     attempts: int = 1
     refusal: "lmcc.Refusal | None" = None
     """The reply could not be read (``on_unreadable="record"``); ``value`` is None."""
+    probabilities: dict = dataclasses.field(default_factory=dict)
+    """What the provider measured over each judgment's answers, ``{field: {key: p}}``
+    (lmcc §3, lm15 judgments): Jev always; others with ``probabilities="required"``
+    where lm15 can measure. ``{}`` when the reply carries none."""
+    measured_by: dict = dataclasses.field(default_factory=dict)
+    """How each distribution was measured, ``{field: method}``."""
 
     @property
     def usage(self) -> dict:
@@ -121,11 +129,19 @@ class CallResult:
 # ------------------------------------------------------------------ adapter
 
 
+# Structured values (lists, dicts, records) are JSON unless an adapter says
+# otherwise: the lmcc kernel ships no structured default on purpose; lmfn,
+# which picks the defaults, does (a wildcard never re-spells a scalar).
+DEFAULT_FORMATS = {"*": lmcc.use("json")}
+
+
 def default_adapter() -> lmcc.Adapter:
     """The layout lmfn uses unless given one: tagged sections, turns before
-    the input, reasoning and tools chosen by what the model can do."""
+    the input, reasoning and tools chosen by what the model can do, and
+    structured values as JSON."""
     return lmcc.adapter(
         name="lmfn_default",
+        formats=DEFAULT_FORMATS,
         messages=[
             lmcc.system("{instruction}\n\nReply in exactly this form:\n"
                         "{% for f in outputs %}<{f.name}>\n{f.value}\n</{f.name}>\n{% endfor %}"),
@@ -137,6 +153,31 @@ def default_adapter() -> lmcc.Adapter:
                 {"when": {"capability": "native_reasoning"},
                  "use": _REGISTRY.transport("native_reasoning", {"effort": "low"})},
                 {"else": _REGISTRY.transport("reasoning_tags", {})}]),
+            "tools": lmcc.Transport(choose=[
+                {"when": {"capability": "native_function_calling"},
+                 "use": _REGISTRY.transport("native_tools", {})},
+                {"else": _REGISTRY.transport("fenced_tools", {})}]),
+        })
+
+
+def json_adapter(*, probabilities: str | None = None) -> lmcc.Adapter:
+    """The reply is one JSON object the provider enforces (lmcc
+    ``reader/json_object``): for models that declare
+    ``native_structured_output``, and the layout Jev needs. With
+    ``probabilities`` (``"if_available"`` or ``"required"``) the artifact
+    itself asks for the distribution over each judgment's answers. A
+    ``reasoning`` output is an ordinary member of the object here."""
+    reader = {"kind": "json_object", **({"probabilities": probabilities} if probabilities else {})}
+    return lmcc.adapter(
+        name="lmfn_json",
+        messages=[
+            lmcc.system("{instruction}"),
+            lmcc.turns(),
+            lmcc.user("{% for f in inputs %}<{f.name}>\n{f.value}\n</{f.name}>\n{% endfor %}"),
+        ],
+        reader=reader,
+        formats=DEFAULT_FORMATS,
+        transports={
             "tools": lmcc.Transport(choose=[
                 {"when": {"capability": "native_function_calling"},
                  "use": _REGISTRY.transport("native_tools", {})},
@@ -183,8 +224,32 @@ def _signature(func, *, reasoning: bool, tools: bool) -> tuple[lmcc.SignatureCor
 
 
 def _tool_spec(fn: Callable) -> Tool:
-    t = lm15.derive_tool(fn).tool
-    return Tool(t.name, t.description, t.parameters)
+    """A Python function as a tool: its name, its docstring, and a JSON Schema
+    object of its parameters, each lowered by lmcc exactly as a signature's
+    inputs are (one lowering for both); a parameter without a default is
+    required. lm15 1.0 no longer derives tools from functions (a tool is a
+    FunctionTool, written out, in every language); in Python, lmfn does."""
+    hints = typing.get_type_hints(fn)
+    props: dict = {}
+    required: list = []
+    for name, param in inspect.signature(fn).parameters.items():
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            raise TypeError(f"tool {fn.__name__}: *{name} has no JSON Schema; name every parameter")
+        if name not in hints:
+            raise TypeError(f"tool {fn.__name__}: parameter {name!r} needs a type annotation")
+        shape = lmcc_core.annotation_to_shape(hints[name], _REGISTRY, field_name=name)
+        if param.default is param.empty:
+            required.append(name)
+        else:
+            try:
+                json.dumps(param.default)
+                shape = {**shape, "default": param.default}
+            except (TypeError, ValueError):
+                pass
+        props[name] = shape
+    parameters = {"type": "object", "properties": props, "required": required,
+                  "additionalProperties": False}
+    return Tool(fn.__name__, inspect.cleandoc(fn.__doc__ or ""), parameters)
 
 
 # ------------------------------------------------------------------ function
@@ -210,7 +275,8 @@ class Function:
         self.tool_specs = [_tool_spec(t) for t in tools]
         self.signature, self._single, self._dataclass = _signature(
             func, reasoning=reasoning, tools=bool(tools))
-        self.adapter = adapter or default_adapter()
+        self.adapter = adapter
+        """The adapter given, or None: then the model's provider picks (``adapter_for``)."""
         self.max_steps = max_steps
         self.retries = retries
         self.tool_errors = tool_errors
@@ -242,15 +308,22 @@ class Function:
             raise RuntimeError("no model: call lmfn.configure(model=...) or pass model= to @ai")
         return merged
 
+    def adapter_for(self, provider: str) -> lmcc.Adapter:
+        """The adapter given, else the default layout — or, for a provider
+        that answers only judgments (Jev), the JSON layout it needs."""
+        if self.adapter is not None:
+            return self.adapter
+        return json_adapter() if provider in models.JUDGMENT_ONLY else default_adapter()
+
     def plan(self) -> lmcc.Plan:
         """The lmcc plan for the current model: bound once per model and capabilities."""
         s = self._resolved()
-        provider = self._router().resolve(s["model"]).provider
-        caps = {**models.capabilities(provider, self._router().resolve(s["model"]).model),
-                **s.get("capabilities", {})}
+        route = self._router().resolve(s["model"])
+        caps = {**models.capabilities(route.provider, route.model), **s.get("capabilities", {})}
         key = (s["model"], json.dumps(caps, sort_keys=True))
         if key not in self._plans:
-            self._plans[key] = self.adapter.bind(self.signature, caps, registry=_REGISTRY)
+            self._plans[key] = self.adapter_for(route.provider).bind(
+                self.signature, caps, registry=_REGISTRY)
         return self._plans[key]
 
     # -- inputs and turns
@@ -380,7 +453,8 @@ class Function:
             value = self._dataclass(**{k: v for k, v in values.items() if k in names})
         else:
             value = values[self._single]
-        return CallResult(value, values, reading.repairs, turn, response, responses, attempts)
+        return CallResult(value, values, reading.repairs, turn, response, responses, attempts,
+                          probabilities=reading.probabilities, measured_by=reading.measured_by)
 
     # -- streaming
 
@@ -418,7 +492,8 @@ class Streamed:
         message = {"role": "assistant", "parts": _coalesce(parts)}
         turn = turn.with_step(lmcc.ModelStep(done.values, message, lmcc.turn.sha256(rendered.request()),
                                              plan.calls_field)).finish()
-        self.result = fn._result(turn, lmcc.Reading(done.values, done.repairs), None, [], 1)
+        self.result = fn._result(turn, lmcc.Reading(done.values, done.repairs, done.probabilities,
+                                                    done.measured_by), None, [], 1)
 
 
 def _coalesce(deltas: list) -> list:

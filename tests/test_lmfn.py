@@ -305,3 +305,82 @@ def test_openai_models_do_not_get_stop_sequences():
     from lmfn import models
     assert models.capabilities("openai", "gpt-4.1-mini")["stop_sequences"] is False
     assert models.capabilities("anthropic", "claude-haiku-4-5")["stop_sequences"] is True
+
+
+# ---- structured values, bound types, probabilities (lmcc 0.8.3; the 2026-09-23 review)
+
+
+@dataclasses.dataclass
+class DishReview:
+    stars: int
+    dish: str
+
+
+def test_structured_values_are_json_by_default():
+    """list[str], dict and One[Review] were refused `no-format`: lmcc ships no
+    structured default on purpose, and lmfn, which picks defaults, now does."""
+    @lmfn.ai
+    def dishes(text: str) -> list[str]:
+        """List the dishes mentioned."""
+
+    @lmfn.ai
+    def review(text: str) -> lmcc.One[DishReview]:
+        """Read the review."""
+
+    fake("<answer>\n[\"tacos\", \"fries\"]\n</answer>", "<answer>\n{\"stars\": 4, \"dish\": \"tacos\"}\n</answer>")
+    assert dishes("Great tacos, cold fries.") == ["tacos", "fries"]
+    assert review("Great tacos.") == DishReview(4, "tacos")
+    assert "JSON matching this schema" in review.render("x").system
+
+
+def test_a_type_bound_with_lmcc_format_reaches_lmfn():
+    """lmcc.format writes lmcc's default registry; lmfn now reads that one,
+    so a type only the host knows (a table) can be an argument."""
+    class Table:
+        def __init__(self, rows):
+            self.rows = rows
+
+    lmcc.format(Table, write=lambda t: "\n".join(" | ".join(map(str, r)) for r in t.rows))
+
+    @lmfn.ai
+    def cheapest(menu: Table) -> str:
+        """Name the cheapest dish."""
+
+    fake("<answer>\nfries\n</answer>")
+    assert cheapest(Table([["tacos", 9], ["fries", 4]])) == "fries"
+    assert "tacos | 9\nfries | 4" in cheapest.render(Table([["tacos", 9], ["fries", 4]])).messages[-1].parts[0].text
+
+
+def test_jev_gets_the_json_layout_and_the_result_carries_probabilities():
+    """A judgment-only provider (Jev) answers with an lm15 data part holding
+    the value and a probability for every declared answer (lm15 MAP-14)."""
+    import typing
+
+    @lmfn.ai(model="jev-latest")
+    def classify(text: str) -> typing.Literal["card_arrival", "exchange_rate"]:
+        """Classify the bank customer's message by what they need."""
+
+    dist = {"answer": {"card_arrival": 0.93, "exchange_rate": 0.07}}
+    router = fake([lm15.DataPart(value={"answer": "card_arrival"}, probabilities=dist,
+                                 method="provider_classification")], provider="typesafe")
+    result = classify.call("Where is my card?")
+    assert result.value == "card_arrival"
+    assert result.probabilities == dist
+    assert result.measured_by == {"answer": "provider_classification"}
+    request = router.requests[0]
+    assert request.config.response_format["schema"]["properties"]["answer"]["enum"] == \
+        ["card_arrival", "exchange_rate"]
+    assert classify.plan().adapter.name == "lmfn_json"
+
+
+def test_probabilities_can_be_asked_of_any_model_as_an_lm15_setting():
+    import typing
+
+    @lmfn.ai(probabilities="if_available")
+    def mood(text: str) -> typing.Literal["good", "bad"]:
+        """Is the review good or bad?"""
+
+    router = fake("<answer>\ngood\n</answer>")
+    result = mood.call("Great tacos.")
+    assert router.requests[0].config.probabilities == "if_available"
+    assert (result.value, result.probabilities) == ("good", {})
