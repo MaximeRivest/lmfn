@@ -7,7 +7,7 @@ from .core import (CallResult, Function, StepLimit, ai, configure, default_adapt
                    judgment_adapter, router, use_router)
 from .session import Example, Session
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["CallResult", "Example", "Function", "Session", "StepLimit", "ai", "configure",
            "default_adapter", "json_adapter", "judgment_adapter", "router",
            "use_router"]
